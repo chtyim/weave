@@ -131,5 +131,7 @@ public interface ResourceSpecification {
         };
       }
     }
+
+    private Builder() {}
   }
 }

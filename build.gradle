@@ -26,11 +26,21 @@ testrunner {
  */
 dependencies {
   apiCompile libraries.google_guava
+  apiCompile libraries.jsr_305
 
+  compile libraries.google_guava
+  compile libraries.google_guice
+  compile libraries.hadoop_common
   compile libraries.hadoop_yarn_api
+  compile libraries.hadoop_yarn_client
+  compile libraries.logback_core
+  compile libraries.logback_classic
+  compile libraries.slf4j_api
+  compile libraries.zookeeper
 
   testCompile libraries.junit
   testCompile libraries.hadoop_minicluster
+  testCompile libraries.netflix_curator_framework
 }
 
 /**
