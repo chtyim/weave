@@ -10,7 +10,6 @@ import junit.framework.Assert;
 import org.apache.zookeeper.CreateMode;
 import org.apache.zookeeper.WatchedEvent;
 import org.apache.zookeeper.Watcher;
-import org.junit.Before;
 import org.junit.Test;
 
 import java.io.File;
@@ -27,10 +26,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
  *
  */
 public class ZKClientTest {
-
-  @Before
-  public void init() {
-  }
 
   @Test
   public void testExpireRewatch() throws InterruptedException, IOException, ExecutionException {
@@ -98,7 +93,7 @@ public class ZKClientTest {
           disconnectLatch.countDown();
         }
       }
-    }).build(), RetryStrategies.retryUnlimited(0, TimeUnit.SECONDS));
+    }).build(), RetryStrategies.fixDelay(0, TimeUnit.SECONDS));
     client.startAndWait();
 
     zkServer.stopAndWait();

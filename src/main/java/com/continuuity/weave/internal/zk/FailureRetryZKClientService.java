@@ -42,8 +42,8 @@ final class FailureRetryZKClientService extends ForwardingZKClientService {
                                         final CreateMode createMode, final boolean createParent) {
     final SettableOperationFuture<String> result = SettableOperationFuture.create(path, sameThreadExecutor);
     Futures.addCallback(super.create(path, data, createMode, createParent),
-                        new OperationFutureCallback<String>(OperationType.CREATE, path, result,
-                                                            new Supplier<OperationFuture<String>>() {
+                        new OperationFutureCallback<String>(OperationType.CREATE, System.currentTimeMillis(),
+                                                            path, result, new Supplier<OperationFuture<String>>() {
                           @Override
                           public OperationFuture<String> get() {
                             return FailureRetryZKClientService.super.create(path, data, createMode, createParent);
@@ -61,8 +61,8 @@ final class FailureRetryZKClientService extends ForwardingZKClientService {
   public OperationFuture<Stat> exists(final String path, final Watcher watcher) {
     final SettableOperationFuture<Stat> result = SettableOperationFuture.create(path, sameThreadExecutor);
     Futures.addCallback(super.exists(path, watcher),
-                        new OperationFutureCallback<Stat>(OperationType.EXISTS, path, result,
-                                                          new Supplier<OperationFuture<Stat>>() {
+                        new OperationFutureCallback<Stat>(OperationType.EXISTS, System.currentTimeMillis(),
+                                                          path, result, new Supplier<OperationFuture<Stat>>() {
                           @Override
                           public OperationFuture<Stat> get() {
                             return FailureRetryZKClientService.super.exists(path, watcher);
@@ -80,7 +80,8 @@ final class FailureRetryZKClientService extends ForwardingZKClientService {
   public OperationFuture<NodeChildren> getChildren(final String path, final Watcher watcher) {
     final SettableOperationFuture<NodeChildren> result = SettableOperationFuture.create(path, sameThreadExecutor);
     Futures.addCallback(super.getChildren(path, watcher),
-                        new OperationFutureCallback<NodeChildren>(OperationType.GET_CHILDREN, path, result,
+                        new OperationFutureCallback<NodeChildren>(OperationType.GET_CHILDREN,
+                                                                  System.currentTimeMillis(), path, result,
                                                                   new Supplier<OperationFuture<NodeChildren>>() {
                           @Override
                           public OperationFuture<NodeChildren> get() {
@@ -99,8 +100,8 @@ final class FailureRetryZKClientService extends ForwardingZKClientService {
   public OperationFuture<NodeData> getData(final String path, final Watcher watcher) {
     final SettableOperationFuture<NodeData> result = SettableOperationFuture.create(path, sameThreadExecutor);
     Futures.addCallback(super.getData(path, watcher),
-                        new OperationFutureCallback<NodeData>(OperationType.GET_DATA, path, result,
-                                                              new Supplier<OperationFuture<NodeData>>() {
+                        new OperationFutureCallback<NodeData>(OperationType.GET_DATA, System.currentTimeMillis(),
+                                                              path, result, new Supplier<OperationFuture<NodeData>>() {
                           @Override
                           public OperationFuture<NodeData> get() {
                             return FailureRetryZKClientService.super.getData(path, watcher);
@@ -118,8 +119,8 @@ final class FailureRetryZKClientService extends ForwardingZKClientService {
   public OperationFuture<Stat> setData(final String dataPath, final byte[] data, final int version) {
     final SettableOperationFuture<Stat> result = SettableOperationFuture.create(dataPath, sameThreadExecutor);
     Futures.addCallback(super.setData(dataPath, data, version),
-                        new OperationFutureCallback<Stat>(OperationType.SET_DATA, dataPath, result,
-                                                          new Supplier<OperationFuture<Stat>>() {
+                        new OperationFutureCallback<Stat>(OperationType.SET_DATA, System.currentTimeMillis(),
+                                                          dataPath, result, new Supplier<OperationFuture<Stat>>() {
                           @Override
                           public OperationFuture<Stat> get() {
                             return FailureRetryZKClientService.super.setData(dataPath, data, version);
@@ -137,8 +138,8 @@ final class FailureRetryZKClientService extends ForwardingZKClientService {
   public OperationFuture<String> delete(final String deletePath, final int version) {
     final SettableOperationFuture<String> result = SettableOperationFuture.create(deletePath, sameThreadExecutor);
     Futures.addCallback(super.delete(deletePath, version),
-                        new OperationFutureCallback<String>(OperationType.DELETE, deletePath, result,
-                                                            new Supplier<OperationFuture<String>>() {
+                        new OperationFutureCallback<String>(OperationType.DELETE, System.currentTimeMillis(),
+                                                            deletePath, result, new Supplier<OperationFuture<String>>() {
                           @Override
                           public OperationFuture<String> get() {
                             return FailureRetryZKClientService.super.delete(deletePath, version);
@@ -165,43 +166,19 @@ final class FailureRetryZKClientService extends ForwardingZKClientService {
     return result;
   }
 
-  private <V> boolean doRetry(Throwable t, AtomicInteger failureCount, OperationType type, String path,
-                              final Supplier<OperationFuture<V>> action, final FutureCallback<V> callback) {
-    if (!(t instanceof KeeperException)) {
-      return false;
-    }
-
-    KeeperException.Code code = ((KeeperException) t).code();
-    if (code != KeeperException.Code.CONNECTIONLOSS && code != KeeperException.Code.SESSIONEXPIRED) {
-      return false;
-    }
-
-    long nextRetry = retryStrategy.nextRetry(failureCount.incrementAndGet(), type, path);
-    if (nextRetry < 0) {
-      return false;
-    }
-
-    scheduler.schedule(new Runnable() {
-      @Override
-      public void run() {
-        Futures.addCallback(action.get(), callback);
-      }
-    }, nextRetry, TimeUnit.MILLISECONDS);
-
-    return true;
-  }
-
   private final class OperationFutureCallback<V> implements FutureCallback<V> {
 
     private final OperationType type;
+    private final long startTime;
     private final String path;
     private final SettableOperationFuture<V> result;
     private final Supplier<OperationFuture<V>> retryAction;
     private final AtomicInteger failureCount;
 
-    private OperationFutureCallback(OperationType type, String path,
+    private OperationFutureCallback(OperationType type, long startTime, String path,
                                     SettableOperationFuture<V> result, Supplier<OperationFuture<V>> retryAction) {
       this.type = type;
+      this.startTime = startTime;
       this.path = path;
       this.result = result;
       this.retryAction = retryAction;
@@ -215,9 +192,34 @@ final class FailureRetryZKClientService extends ForwardingZKClientService {
 
     @Override
     public void onFailure(Throwable t) {
-      if (!doRetry(t, failureCount, type, path, retryAction, this)) {
+      if (!doRetry(t)) {
         result.setException(t);
       }
+    }
+
+    private boolean doRetry(Throwable t) {
+      if (!(t instanceof KeeperException)) {
+        return false;
+      }
+
+      KeeperException.Code code = ((KeeperException) t).code();
+      if (code != KeeperException.Code.CONNECTIONLOSS && code != KeeperException.Code.SESSIONEXPIRED) {
+        return false;
+      }
+
+      long nextRetry = retryStrategy.nextRetry(failureCount.incrementAndGet(), startTime, type, path);
+      if (nextRetry < 0) {
+        return false;
+      }
+
+      scheduler.schedule(new Runnable() {
+        @Override
+        public void run() {
+          Futures.addCallback(retryAction.get(), OperationFutureCallback.this);
+        }
+      }, nextRetry, TimeUnit.MILLISECONDS);
+
+      return true;
     }
   }
 }
