@@ -1,4 +1,4 @@
-package com.continuuity.weave;
+package com.continuuity.weave.zk;
 
 import com.google.common.base.Preconditions;
 import org.apache.zookeeper.WatchedEvent;

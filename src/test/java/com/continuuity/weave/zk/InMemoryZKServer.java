@@ -1,9 +1,11 @@
-package com.continuuity.weave;
+package com.continuuity.weave.zk;
 
 import com.google.common.base.Preconditions;
 import com.google.common.base.Throwables;
 import com.google.common.io.Files;
 import com.google.common.util.concurrent.AbstractIdleService;
+import com.google.common.util.concurrent.ListenableFuture;
+import com.google.common.util.concurrent.Service;
 import org.apache.zookeeper.server.ServerCnxnFactory;
 import org.apache.zookeeper.server.ZooKeeperServer;
 import org.apache.zookeeper.server.persistence.FileTxnSnapLog;
@@ -14,16 +16,41 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.UnknownHostException;
+import java.util.concurrent.Executor;
 
 /**
  *
  */
-public final class InMemoryZKServer extends AbstractIdleService {
+public final class InMemoryZKServer implements Service {
 
   private final File dataDir;
   private final int tickTime;
   private final boolean autoClean;
   private final int port;
+  private final Service delegateService = new AbstractIdleService() {
+    @Override
+    protected void startUp() throws Exception {
+      ZooKeeperServer zkServer = new ZooKeeperServer();
+      FileTxnSnapLog ftxn = new FileTxnSnapLog(dataDir, dataDir);
+      zkServer.setTxnLogFactory(ftxn);
+      zkServer.setTickTime(tickTime);
+
+      factory = ServerCnxnFactory.createFactory();
+      factory.configure(getAddress(port), -1);
+      factory.startup(zkServer);
+    }
+
+    @Override
+    protected void shutDown() throws Exception {
+      try {
+        factory.shutdown();
+      } finally {
+        if (autoClean) {
+          cleanDir(dataDir);
+        }
+      }
+    }
+  };
 
   private ServerCnxnFactory factory;
 
@@ -43,29 +70,6 @@ public final class InMemoryZKServer extends AbstractIdleService {
     this.tickTime = tickTime;
     this.autoClean = autoClean;
     this.port = port;
-  }
-
-  @Override
-  protected void startUp() throws Exception {
-    ZooKeeperServer zkServer = new ZooKeeperServer();
-    FileTxnSnapLog ftxn = new FileTxnSnapLog(dataDir, dataDir);
-    zkServer.setTxnLogFactory(ftxn);
-    zkServer.setTickTime(tickTime);
-
-    factory = ServerCnxnFactory.createFactory();
-    factory.configure(getAddress(port), -1);
-    factory.startup(zkServer);
-  }
-
-  @Override
-  protected void shutDown() throws Exception {
-    try {
-      factory.shutdown();
-    } finally {
-      if (autoClean) {
-        cleanDir(dataDir);
-      }
-    }
   }
 
   public String getConnectionStr() {
@@ -109,6 +113,41 @@ public final class InMemoryZKServer extends AbstractIdleService {
       }
       file.delete();
     }
+  }
+
+  @Override
+  public ListenableFuture<State> start() {
+    return delegateService.start();
+  }
+
+  @Override
+  public State startAndWait() {
+    return delegateService.startAndWait();
+  }
+
+  @Override
+  public boolean isRunning() {
+    return delegateService.isRunning();
+  }
+
+  @Override
+  public State state() {
+    return delegateService.state();
+  }
+
+  @Override
+  public ListenableFuture<State> stop() {
+    return delegateService.stop();
+  }
+
+  @Override
+  public State stopAndWait() {
+    return delegateService.stopAndWait();
+  }
+
+  @Override
+  public void addListener(Listener listener, Executor executor) {
+    delegateService.addListener(listener, executor);
   }
 
   public static final class Builder {

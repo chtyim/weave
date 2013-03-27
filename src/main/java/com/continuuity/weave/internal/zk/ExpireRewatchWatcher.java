@@ -88,8 +88,12 @@ final class ExpireRewatchWatcher implements Watcher {
 
       @Override
       public void onFailure(Throwable t) {
-        lastResult.set(null, false);
-        LOG.error("Fail to re-set watch on exists for path " + path, t);
+        if (isRetry(t)) {
+          exists();
+        } else {
+          lastResult.set(null, false);
+          LOG.error("Fail to re-set watch on exists for path " + path, t);
+        }
       }
     });
   }
@@ -121,8 +125,12 @@ final class ExpireRewatchWatcher implements Watcher {
 
       @Override
       public void onFailure(Throwable t) {
-        lastResult.set(null, false);
+        if (isRetry(t)) {
+          children();
+          return;
+        }
 
+        lastResult.set(null, false);
         if (t instanceof KeeperException) {
           KeeperException.Code code = ((KeeperException) t).code();
           if (code == KeeperException.Code.NONODE) {
@@ -151,8 +159,12 @@ final class ExpireRewatchWatcher implements Watcher {
 
       @Override
       public void onFailure(Throwable t) {
-        lastResult.set(null, false);
+        if (isRetry(t)) {
+          data();
+          return;
+        }
 
+        lastResult.set(null, false);
         if (t instanceof KeeperException) {
           KeeperException.Code code = ((KeeperException) t).code();
           if (code == KeeperException.Code.NONODE) {
@@ -164,5 +176,9 @@ final class ExpireRewatchWatcher implements Watcher {
         LOG.error("Fail to re-set watch on getData for path " + path, t);
       }
     });
+  }
+
+  private boolean isRetry(Throwable t) {
+    return (t instanceof KeeperException && ((KeeperException)t).code() == KeeperException.Code.SESSIONEXPIRED);
   }
 }
