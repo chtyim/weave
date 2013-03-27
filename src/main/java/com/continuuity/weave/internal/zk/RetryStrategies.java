@@ -5,10 +5,13 @@ import com.google.common.base.Preconditions;
 import java.util.concurrent.TimeUnit;
 
 /**
- *
+ * Factory for creating common {@link RetryStrategy} implementation.
  */
 public final class RetryStrategies {
 
+  /**
+   * @return A {@link RetryStrategy} that doesn't do any retry.
+   */
   public static RetryStrategy noRetry() {
     return new RetryStrategy() {
       @Override
@@ -18,6 +21,13 @@ public final class RetryStrategies {
     };
   }
 
+  /**
+   * Creates a {@link RetryStrategy} that retries maximum given number of times, with the actual
+   * delay behavior delegated to another {@link RetryStrategy}.
+   * @param limit Maximum number of retries allowed.
+   * @param strategy When failure count is less than or equal to the limit, this strategy will be called.
+   * @return A {@link RetryStrategy}.
+   */
   public static RetryStrategy limit(final int limit, final RetryStrategy strategy) {
     Preconditions.checkArgument(limit >= 0, "limit must be >= 0");
     return new RetryStrategy() {
@@ -28,6 +38,12 @@ public final class RetryStrategies {
     };
   }
 
+  /**
+   * Creates a {@link RetryStrategy} that imposes a fix delay between each retries.
+   * @param delay delay time
+   * @param delayUnit {@link TimeUnit} for the delay.
+   * @return A {@link RetryStrategy}.
+   */
   public static RetryStrategy fixDelay(final long delay, final TimeUnit delayUnit) {
     Preconditions.checkArgument(delay >= 0, "delay must be >= 0");
     return new RetryStrategy() {

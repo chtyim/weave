@@ -7,7 +7,6 @@ import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.MoreExecutors;
 import org.apache.zookeeper.CreateMode;
-import org.apache.zookeeper.KeeperException;
 import org.apache.zookeeper.Watcher;
 import org.apache.zookeeper.data.Stat;
 
@@ -198,12 +197,7 @@ final class FailureRetryZKClientService extends ForwardingZKClientService {
     }
 
     private boolean doRetry(Throwable t) {
-      if (!(t instanceof KeeperException)) {
-        return false;
-      }
-
-      KeeperException.Code code = ((KeeperException) t).code();
-      if (code != KeeperException.Code.CONNECTIONLOSS && code != KeeperException.Code.SESSIONEXPIRED) {
+      if (!RetryUtils.canRetry(t)) {
         return false;
       }
 

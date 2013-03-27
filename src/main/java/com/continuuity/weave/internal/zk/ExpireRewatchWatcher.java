@@ -88,7 +88,7 @@ final class ExpireRewatchWatcher implements Watcher {
 
       @Override
       public void onFailure(Throwable t) {
-        if (isRetry(t)) {
+        if (RetryUtils.canRetry(t)) {
           exists();
         } else {
           lastResult.set(null, false);
@@ -125,7 +125,7 @@ final class ExpireRewatchWatcher implements Watcher {
 
       @Override
       public void onFailure(Throwable t) {
-        if (isRetry(t)) {
+        if (RetryUtils.canRetry(t)) {
           children();
           return;
         }
@@ -159,7 +159,7 @@ final class ExpireRewatchWatcher implements Watcher {
 
       @Override
       public void onFailure(Throwable t) {
-        if (isRetry(t)) {
+        if (RetryUtils.canRetry(t)) {
           data();
           return;
         }
@@ -176,9 +176,5 @@ final class ExpireRewatchWatcher implements Watcher {
         LOG.error("Fail to re-set watch on getData for path " + path, t);
       }
     });
-  }
-
-  private boolean isRetry(Throwable t) {
-    return (t instanceof KeeperException && ((KeeperException)t).code() == KeeperException.Code.SESSIONEXPIRED);
   }
 }
