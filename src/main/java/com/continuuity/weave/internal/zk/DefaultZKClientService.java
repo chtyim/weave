@@ -32,7 +32,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- *
+ * The base implementation of {@link ZKClientService}.
  */
 final class DefaultZKClientService implements ZKClientService {
 
@@ -68,48 +68,57 @@ final class DefaultZKClientService implements ZKClientService {
   }
 
   @Override
-  public OperationFuture<String> create(String path,
+  public OperationFuture<String> create(final String path,
                                         @Nullable final byte[] data,
                                         final CreateMode createMode,
                                         final boolean createParent) {
     final SettableOperationFuture<String> result = SettableOperationFuture.create(path, eventExecutor);
-    getZooKeeper().create(path, data, aclMapper.apply(path), createMode, new AsyncCallback.StringCallback() {
+    getZooKeeper().create(path, data, aclMapper.apply(path), createMode, Callbacks.STRING, result);
+    if (!createParent) {
+      return result;
+    }
+
+    // If create parent is request, return a different future
+    final SettableOperationFuture<String> createFuture = SettableOperationFuture.create(path, eventExecutor);
+    // Watch for changes in the original future
+    Futures.addCallback(result, new FutureCallback<String>() {
       @Override
-      public void processResult(int rc, final String path, final Object ctx, final String name) {
-        final StringCallback callback = this;
-        KeeperException.Code code = KeeperException.Code.get(rc);
-        if (code == KeeperException.Code.OK) {
-          result.set(name);
+      public void onSuccess(String result) {
+        // Propagate if creation was successful
+        createFuture.set(result);
+      }
+
+      @Override
+      public void onFailure(Throwable t) {
+        // For errors other than NONODE, propagate it
+        if (!(t instanceof KeeperException) || ((KeeperException)t).code() != KeeperException.Code.NONODE) {
+          createFuture.setException(t);
           return;
         }
-        if (createParent && code == KeeperException.Code.NONODE) {
-          // Create the parent node
-          String parentPath = path.substring(0, path.lastIndexOf('/'));
-          if (parentPath.isEmpty()) {
-            result.setException(new IllegalStateException("Root node not exists."));
-            return;
-          }
-          Futures.addCallback(create(parentPath, null, CreateMode.PERSISTENT, createParent),
-                              new FutureCallback<String>() {
+        // Create the parent node
+        String parentPath = path.substring(0, path.lastIndexOf('/'));
+        if (parentPath.isEmpty()) {
+          createFuture.setException(new IllegalStateException("Root node not exists."));
+          return;
+        }
+        // Watch for parent creation complete
+        Futures.addCallback(
+          create(parentPath, null, CreateMode.PERSISTENT, createParent), new FutureCallback<String>() {
             @Override
             public void onSuccess(String result) {
               // Create the requested path again
-              getZooKeeper().create(path, data, aclMapper.apply(path), createMode, callback, ctx);
+              getZooKeeper().create(path, data, aclMapper.apply(path), createMode, Callbacks.STRING, createFuture);
             }
 
             @Override
             public void onFailure(Throwable t) {
-              result.setException(t);
+              createFuture.setException(t);
             }
           });
-          return;
-        }
-        // Otherwise, it is an error
-        result.setException(KeeperException.create(code));
       }
-    }, null);
+    });
 
-    return result;
+    return createFuture;
   }
 
   @Override
@@ -118,22 +127,9 @@ final class DefaultZKClientService implements ZKClientService {
   }
 
   @Override
-  public OperationFuture<Stat> exists(String path, final Watcher watcher) {
-    final SettableOperationFuture<Stat> result = SettableOperationFuture.create(path, eventExecutor);
-    final Watcher wrappedWatcher = wrapWatcher(watcher);
-
-    getZooKeeper().exists(path, wrappedWatcher, new AsyncCallback.StatCallback() {
-      @Override
-      public void processResult(int rc, String path, Object ctx, Stat stat) {
-        KeeperException.Code code = KeeperException.Code.get(rc);
-        if (code == KeeperException.Code.OK || code == KeeperException.Code.NONODE) {
-          result.set(stat);
-          return;
-        }
-        result.setException(KeeperException.create(code));
-      }
-    }, null);
-
+  public OperationFuture<Stat> exists(String path, Watcher watcher) {
+    SettableOperationFuture<Stat> result = SettableOperationFuture.create(path, eventExecutor);
+    getZooKeeper().exists(path, wrapWatcher(watcher), Callbacks.STAT, result);
     return result;
   }
 
@@ -144,21 +140,8 @@ final class DefaultZKClientService implements ZKClientService {
 
   @Override
   public OperationFuture<NodeChildren> getChildren(String path, Watcher watcher) {
-    final SettableOperationFuture<NodeChildren> result = SettableOperationFuture.create(path, eventExecutor);
-    final Watcher wrapperWatcher = wrapWatcher(watcher);
-
-    getZooKeeper().getChildren(path, wrapperWatcher, new AsyncCallback.Children2Callback() {
-      @Override
-      public void processResult(int rc, String path, Object ctx, List<String> children, Stat stat) {
-        KeeperException.Code code = KeeperException.Code.get(rc);
-        if (code == KeeperException.Code.OK) {
-          result.set(new BasicNodeChildren(children, stat));
-          return;
-        }
-        result.setException(KeeperException.create(code));
-      }
-    }, null);
-
+    SettableOperationFuture<NodeChildren> result = SettableOperationFuture.create(path, eventExecutor);
+    getZooKeeper().getChildren(path, wrapWatcher(watcher), Callbacks.CHILDREN, result);
     return result;
   }
 
@@ -169,20 +152,8 @@ final class DefaultZKClientService implements ZKClientService {
 
   @Override
   public OperationFuture<NodeData> getData(String path, Watcher watcher) {
-    final SettableOperationFuture<NodeData> result = SettableOperationFuture.create(path, eventExecutor);
-    final Watcher wrapperWatcher = wrapWatcher(watcher);
-
-    getZooKeeper().getData(path, wrapperWatcher, new AsyncCallback.DataCallback() {
-      @Override
-      public void processResult(int rc, String path, Object ctx, byte[] data, Stat stat) {
-        KeeperException.Code code = KeeperException.Code.get(rc);
-        if (code == KeeperException.Code.OK) {
-          result.set(new BasicNodeData(data, stat));
-          return;
-        }
-        result.setException(KeeperException.create(code));
-      }
-    }, null);
+    SettableOperationFuture<NodeData> result = SettableOperationFuture.create(path, eventExecutor);
+    getZooKeeper().getData(path, wrapWatcher(watcher), Callbacks.DATA, result);
 
     return result;
   }
@@ -193,21 +164,9 @@ final class DefaultZKClientService implements ZKClientService {
   }
 
   @Override
-  public OperationFuture<Stat> setData(final String dataPath, final byte[] data, final int version) {
-    final SettableOperationFuture<Stat> result = SettableOperationFuture.create(dataPath, eventExecutor);
-    getZooKeeper().setData(dataPath, data, version, new AsyncCallback.StatCallback() {
-      @Override
-      public void processResult(int rc, String path, Object ctx, Stat stat) {
-        KeeperException.Code code = KeeperException.Code.get(rc);
-        if (code == KeeperException.Code.OK) {
-          result.set(stat);
-          return;
-        }
-        // Otherwise, it is an error
-        result.setException(KeeperException.create(code));
-      }
-    }, null);
-
+  public OperationFuture<Stat> setData(String dataPath, byte[] data, int version) {
+    SettableOperationFuture<Stat> result = SettableOperationFuture.create(dataPath, eventExecutor);
+    getZooKeeper().setData(dataPath, data, version, Callbacks.STAT, result);
     return result;
   }
 
@@ -217,21 +176,9 @@ final class DefaultZKClientService implements ZKClientService {
   }
 
   @Override
-  public OperationFuture<String> delete(final String deletePath, final int version) {
-    final SettableOperationFuture<String> result = SettableOperationFuture.create(deletePath, eventExecutor);
-    getZooKeeper().delete(deletePath, version, new AsyncCallback.VoidCallback() {
-      @Override
-      public void processResult(int rc, String path, Object ctx) {
-        KeeperException.Code code = KeeperException.Code.get(rc);
-        if (code == KeeperException.Code.OK) {
-          result.set(deletePath);
-          return;
-        }
-        // Otherwise, it is an error
-        result.setException(KeeperException.create(code));
-      }
-    }, null);
-
+  public OperationFuture<String> delete(String deletePath, int version) {
+    SettableOperationFuture<String> result = SettableOperationFuture.create(deletePath, eventExecutor);
+    getZooKeeper().delete(deletePath, version, Callbacks.VOID, result);
     return result;
   }
 
@@ -377,5 +324,76 @@ final class DefaultZKClientService implements ZKClientService {
         }
       }
     }
+  }
+
+  /**
+   * Collection of generic callbacks that simply reflect results into OperationFuture.
+   */
+  private static final class Callbacks {
+    static AsyncCallback.StringCallback STRING = new AsyncCallback.StringCallback() {
+      @Override
+      public void processResult(int rc, String path, Object ctx, String name) {
+        SettableOperationFuture<String> result = (SettableOperationFuture<String>)ctx;
+        KeeperException.Code code = KeeperException.Code.get(rc);
+        if (code == KeeperException.Code.OK) {
+          result.set(name);
+          return;
+        }
+        result.setException(KeeperException.create(code));
+      }
+    };
+
+    static AsyncCallback.StatCallback STAT = new AsyncCallback.StatCallback() {
+      @Override
+      public void processResult(int rc, String path, Object ctx, Stat stat) {
+        SettableOperationFuture<Stat> result = (SettableOperationFuture<Stat>)ctx;
+        KeeperException.Code code = KeeperException.Code.get(rc);
+        if (code == KeeperException.Code.OK || code == KeeperException.Code.NONODE) {
+          result.set(stat);
+          return;
+        }
+        result.setException(KeeperException.create(code));
+      }
+    };
+
+    static AsyncCallback.Children2Callback CHILDREN = new AsyncCallback.Children2Callback() {
+      @Override
+      public void processResult(int rc, String path, Object ctx, List<String> children, Stat stat) {
+        SettableOperationFuture<NodeChildren> result = (SettableOperationFuture<NodeChildren>)ctx;
+        KeeperException.Code code = KeeperException.Code.get(rc);
+        if (code == KeeperException.Code.OK) {
+          result.set(new BasicNodeChildren(children, stat));
+          return;
+        }
+        result.setException(KeeperException.create(code));
+      }
+    };
+
+    static AsyncCallback.DataCallback DATA = new AsyncCallback.DataCallback() {
+      @Override
+      public void processResult(int rc, String path, Object ctx, byte[] data, Stat stat) {
+        SettableOperationFuture<NodeData> result = (SettableOperationFuture<NodeData>)ctx;
+        KeeperException.Code code = KeeperException.Code.get(rc);
+        if (code == KeeperException.Code.OK) {
+          result.set(new BasicNodeData(data, stat));
+          return;
+        }
+        result.setException(KeeperException.create(code));
+      }
+    };
+
+    static AsyncCallback.VoidCallback VOID = new AsyncCallback.VoidCallback() {
+      @Override
+      public void processResult(int rc, String path, Object ctx) {
+        SettableOperationFuture<String> result = (SettableOperationFuture<String>)ctx;
+        KeeperException.Code code = KeeperException.Code.get(rc);
+        if (code == KeeperException.Code.OK) {
+          result.set(result.getRequestPath());
+          return;
+        }
+        // Otherwise, it is an error
+        result.setException(KeeperException.create(code));
+      }
+    };
   }
 }

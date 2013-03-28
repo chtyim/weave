@@ -31,6 +31,34 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class ZKClientTest {
 
   @Test
+  public void testCreateParent() throws ExecutionException, InterruptedException {
+    InMemoryZKServer zkServer = InMemoryZKServer.builder().setTickTime(1000).build();
+    zkServer.startAndWait();
+
+    try {
+      ZKClientService client = ZKClientService.Builder.of(zkServer.getConnectionStr()).build();
+      client.startAndWait();
+
+      try {
+        String path = client.create("/test1/test2/test3/test4/test5",
+                                    "testing".getBytes(), CreateMode.PERSISTENT_SEQUENTIAL).get();
+        Assert.assertTrue(path.startsWith("/test1/test2/test3/test4/test5"));
+
+        String dataPath = "";
+        for (int i = 1; i <= 4; i++) {
+          dataPath = dataPath + "/test" + i;
+          Assert.assertNull(client.getData(dataPath).get().getData());
+        }
+        Assert.assertTrue(Arrays.equals("testing".getBytes(), client.getData(path).get().getData()));
+      } finally {
+        client.stopAndWait();
+      }
+    } finally {
+      zkServer.stopAndWait();
+    }
+  }
+
+  @Test
   public void testGetChildren() throws ExecutionException, InterruptedException {
     InMemoryZKServer zkServer = InMemoryZKServer.builder().setTickTime(1000).build();
     zkServer.startAndWait();
