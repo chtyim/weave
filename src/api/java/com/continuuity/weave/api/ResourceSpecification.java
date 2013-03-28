@@ -1,9 +1,13 @@
 package com.continuuity.weave.api;
 
+import com.continuuity.weave.internal.api.DefaultResourceSpecification;
+
 /**
  *
  */
 public interface ResourceSpecification {
+
+  final ResourceSpecification BASIC = Builder.with().setCores(1).setMemory(512, SizeUnit.MEGA).build();
 
   enum SizeUnit {
     MEGA(1),
@@ -103,32 +107,7 @@ public interface ResourceSpecification {
 
     public abstract class Build {
       public ResourceSpecification build() {
-        final int finalCores = cores;
-        final int finalMemory = memory;
-        final int finalUplink = uplink;
-        final int finalDownlink = downlink;
-
-        return new ResourceSpecification() {
-          @Override
-          public int getCores() {
-            return finalCores;
-          }
-
-          @Override
-          public int getMemorySize() {
-            return finalMemory;
-          }
-
-          @Override
-          public int getUplink() {
-            return finalUplink;
-          }
-
-          @Override
-          public int getDownlink() {
-            return finalDownlink;
-          }
-        };
+        return new DefaultResourceSpecification(cores, memory, uplink, downlink);
       }
     }
 

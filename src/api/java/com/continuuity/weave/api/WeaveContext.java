@@ -11,5 +11,5 @@ public interface WeaveContext {
 
   InetAddress getHost();
 
-  WeaveSpecification getSpecification();
+  WeaveRunnableSpecification getSpecification();
 }

@@ -28,6 +28,7 @@ dependencies {
   apiCompile libraries.google_guava
   apiCompile libraries.jsr_305
 
+  compile libraries.google_gson
   compile libraries.google_guava
   compile libraries.google_guice
   compile libraries.hadoop_common
@@ -35,6 +36,7 @@ dependencies {
   compile libraries.hadoop_yarn_client
   compile libraries.logback_core
   compile libraries.logback_classic
+  compile libraries.netty
   compile libraries.slf4j_api
   compile libraries.zookeeper
 

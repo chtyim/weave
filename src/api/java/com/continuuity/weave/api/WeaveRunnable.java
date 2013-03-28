@@ -5,7 +5,7 @@ package com.continuuity.weave.api;
  */
 public interface WeaveRunnable extends Runnable {
 
-  WeaveSpecification configure();
+  WeaveRunnableSpecification configure();
 
   void initialize(WeaveContext context);
 

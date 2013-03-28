@@ -11,7 +11,5 @@ public interface WeavePreparer {
 
   WeavePreparer addErrorHandler();
 
-  WeavePreparer setResourceSpecification(ResourceSpecification resourceSpec);
-
   WeaveController start();
 }

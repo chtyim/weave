@@ -179,5 +179,8 @@ public final class InMemoryZKServer implements Service {
     public InMemoryZKServer build() {
       return new InMemoryZKServer(dataDir, tickTime, autoCleanDataDir, port);
     }
+
+    private Builder() {
+    }
   }
 }

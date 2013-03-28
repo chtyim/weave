@@ -10,5 +10,5 @@ public interface ErrorHandler {
     IGNORE
   }
 
-  InstanceDiedPolicy onInstanceDied(WeaveSpecification weaveSpec);
+  InstanceDiedPolicy onInstanceDied(WeaveRunnableSpecification weaveSpec);
 }

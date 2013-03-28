@@ -6,7 +6,6 @@ import com.google.common.base.Throwables;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
-import java.lang.reflect.Modifier;
 
 /**
  * Utility class to help instantiate object instance from class.
@@ -42,7 +41,6 @@ public final class Instances {
    * @return An instance of type {@code <T>}
    */
   public static <T> T newInstance(Class<T> clz) {
-    System.out.println(Modifier.toString(clz.getModifiers()));
     try {
       try {
         Constructor<T> cons = clz.getDeclaredConstructor();

@@ -12,11 +12,11 @@ public interface RunInfo {
   RunId getId();
 
   /**
-   * Returns the {@link WeaveSpecification} returned from
+   * Returns the {@link WeaveRunnableSpecification} returned from
    * the {@link com.continuuity.weave.api.WeaveRunnable#configure()} method.
-   * @return A {@link WeaveSpecification} instance.
+   * @return A {@link WeaveRunnableSpecification} instance.
    */
-  WeaveSpecification getSpecification();
+  WeaveRunnableSpecification getSpecification();
 
   ResourceSpecification getResourceSpecification();
 }
