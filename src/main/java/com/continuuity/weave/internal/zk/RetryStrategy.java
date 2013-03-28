@@ -1,7 +1,7 @@
 package com.continuuity.weave.internal.zk;
 
 /**
- *
+ * Provides strategy to use for operation retries.
  */
 public interface RetryStrategy {
 

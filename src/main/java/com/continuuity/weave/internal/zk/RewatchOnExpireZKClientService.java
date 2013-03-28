@@ -1,23 +1,24 @@
 package com.continuuity.weave.internal.zk;
 
+import com.continuuity.weave.internal.zk.RewatchOnExpireWatcher.ActionType;
 import com.google.common.util.concurrent.FutureCallback;
 import com.google.common.util.concurrent.Futures;
 import org.apache.zookeeper.Watcher;
 import org.apache.zookeeper.data.Stat;
 
 /**
-*
-*/
-final class ExpireRewatchZKClientService extends ForwardingZKClientService {
+ * A {@link ZKClientService} that will rewatch automatically when session expired and reconnect.
+ * The rewatch logic is mainly done in {@link RewatchOnExpireWatcher}.
+ */
+final class RewatchOnExpireZKClientService extends ForwardingZKClientService {
 
-  ExpireRewatchZKClientService(ZKClientService delegate) {
+  RewatchOnExpireZKClientService(ZKClientService delegate) {
     super(delegate);
   }
 
   @Override
   public OperationFuture<Stat> exists(String path, Watcher watcher) {
-    final ExpireRewatchWatcher wrappedWatcher = new ExpireRewatchWatcher(this, ExpireRewatchWatcher.ActionType.EXISTS,
-                                                                       path, watcher);
+    final RewatchOnExpireWatcher wrappedWatcher = new RewatchOnExpireWatcher(this, ActionType.EXISTS, path, watcher);
     OperationFuture<Stat> result = super.exists(path, wrappedWatcher);
     Futures.addCallback(result, new FutureCallback<Stat>() {
       @Override
@@ -35,8 +36,7 @@ final class ExpireRewatchZKClientService extends ForwardingZKClientService {
 
   @Override
   public OperationFuture<NodeChildren> getChildren(String path, Watcher watcher) {
-    final ExpireRewatchWatcher wrappedWatcher = new ExpireRewatchWatcher(this, ExpireRewatchWatcher.ActionType.CHILDREN,
-                                                                       path, watcher);
+    final RewatchOnExpireWatcher wrappedWatcher = new RewatchOnExpireWatcher(this, ActionType.CHILDREN, path, watcher);
     OperationFuture<NodeChildren> result = super.getChildren(path, wrappedWatcher);
     Futures.addCallback(result, new FutureCallback<NodeChildren>() {
       @Override
@@ -54,8 +54,7 @@ final class ExpireRewatchZKClientService extends ForwardingZKClientService {
 
   @Override
   public OperationFuture<NodeData> getData(String path, Watcher watcher) {
-    final ExpireRewatchWatcher wrappedWatcher = new ExpireRewatchWatcher(this, ExpireRewatchWatcher.ActionType.DATA,
-                                                                       path, watcher);
+    final RewatchOnExpireWatcher wrappedWatcher = new RewatchOnExpireWatcher(this, ActionType.DATA, path, watcher);
     OperationFuture<NodeData> result = super.getData(path, wrappedWatcher);
     Futures.addCallback(result, new FutureCallback<NodeData>() {
       @Override

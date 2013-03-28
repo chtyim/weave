@@ -6,7 +6,8 @@ import javax.annotation.Nullable;
 import java.util.concurrent.Executor;
 
 /**
- *
+ * An implementation for {@link OperationFuture} that allows setting result directly.
+ * Also, all listener callback will be fired from the given executor.
  */
 final class SettableOperationFuture<V> extends AbstractFuture<V> implements OperationFuture<V> {
 

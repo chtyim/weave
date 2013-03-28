@@ -17,7 +17,11 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- *
+ * A {@link ZKClientService} that will invoke {@link RetryStrategy} on operation failure.
+ * This {@link ZKClientService} works by delegating calls to another {@link ZKClientService}
+ * and listen for the result. If the result is a failure, and is
+ * {@link RetryUtils#canRetry(org.apache.zookeeper.KeeperException.Code) retryable}, the given {@link RetryStrategy}
+ * will be called to determine the next retry time, or give up, depending on the value returned by the strategy.
  */
 final class FailureRetryZKClientService extends ForwardingZKClientService {
 
@@ -25,7 +29,7 @@ final class FailureRetryZKClientService extends ForwardingZKClientService {
   private final Executor sameThreadExecutor;
   private ScheduledExecutorService scheduler;
 
-  public FailureRetryZKClientService(ZKClientService delegate, RetryStrategy retryStrategy) {
+  FailureRetryZKClientService(ZKClientService delegate, RetryStrategy retryStrategy) {
     super(delegate);
     this.retryStrategy = retryStrategy;
     this.sameThreadExecutor = MoreExecutors.sameThreadExecutor();
@@ -165,6 +169,10 @@ final class FailureRetryZKClientService extends ForwardingZKClientService {
     return result;
   }
 
+  /**
+   * Callback to watch for operation result and trigger retry if necessary.
+   * @param <V> Type of operation result.
+   */
   private final class OperationFutureCallback<V> implements FutureCallback<V> {
 
     private final OperationType type;
@@ -201,11 +209,13 @@ final class FailureRetryZKClientService extends ForwardingZKClientService {
         return false;
       }
 
+      // Determine the relay delay
       long nextRetry = retryStrategy.nextRetry(failureCount.incrementAndGet(), startTime, type, path);
       if (nextRetry < 0) {
         return false;
       }
 
+      // Schedule the retry.
       scheduler.schedule(new Runnable() {
         @Override
         public void run() {

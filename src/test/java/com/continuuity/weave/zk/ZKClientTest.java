@@ -1,8 +1,10 @@
 package com.continuuity.weave.zk;
 
+import com.continuuity.weave.internal.zk.NodeChildren;
 import com.continuuity.weave.internal.zk.RetryStrategies;
 import com.continuuity.weave.internal.zk.ZKClientService;
 import com.continuuity.weave.internal.zk.ZKClientServices;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.io.Files;
 import com.google.common.util.concurrent.FutureCallback;
 import com.google.common.util.concurrent.Futures;
@@ -14,6 +16,7 @@ import org.junit.Test;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
@@ -26,6 +29,55 @@ import java.util.concurrent.atomic.AtomicBoolean;
  *
  */
 public class ZKClientTest {
+
+  @Test
+  public void testGetChildren() throws ExecutionException, InterruptedException {
+    InMemoryZKServer zkServer = InMemoryZKServer.builder().setTickTime(1000).build();
+    zkServer.startAndWait();
+
+    try {
+      ZKClientService client = ZKClientService.Builder.of(zkServer.getConnectionStr()).build();
+      client.startAndWait();
+
+      try {
+        client.create("/test", null, CreateMode.PERSISTENT).get();
+        Assert.assertTrue(client.getChildren("/test").get().getChildren().isEmpty());
+
+        Futures.allAsList(client.create("/test/c1", null, CreateMode.EPHEMERAL),
+                          client.create("/test/c2", null, CreateMode.EPHEMERAL)).get();
+
+        NodeChildren nodeChildren = client.getChildren("/test").get();
+        Assert.assertEquals(2, nodeChildren.getChildren().size());
+
+        Assert.assertEquals(ImmutableSet.of("c1", "c2"), ImmutableSet.copyOf(nodeChildren.getChildren()));
+
+      } finally {
+        client.stopAndWait();
+      }
+    } finally {
+      zkServer.stopAndWait();
+    }
+  }
+
+  @Test
+  public void testSetData() throws ExecutionException, InterruptedException {
+    InMemoryZKServer zkServer = InMemoryZKServer.builder().setTickTime(1000).build();
+    zkServer.startAndWait();
+
+    try {
+      ZKClientService client = ZKClientService.Builder.of(zkServer.getConnectionStr()).build();
+      client.startAndWait();
+
+      client.create("/test", null, CreateMode.PERSISTENT).get();
+      Assert.assertNull(client.getData("/test").get().getData());
+
+      client.setData("/test", "testing".getBytes()).get();
+      Assert.assertTrue(Arrays.equals("testing".getBytes(), client.getData("/test").get().getData()));
+
+    } finally {
+      zkServer.stopAndWait();
+    }
+  }
 
   @Test
   public void testExpireRewatch() throws InterruptedException, IOException, ExecutionException {

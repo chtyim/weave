@@ -14,9 +14,9 @@ import java.util.concurrent.atomic.AtomicMarkableReference;
 /**
  * A wrapper for {@link Watcher} that will re-set the watch automatically until it is successful.
  */
-final class ExpireRewatchWatcher implements Watcher {
+final class RewatchOnExpireWatcher implements Watcher {
 
-  private static final Logger LOG = LoggerFactory.getLogger(ExpireRewatchWatcher.class);
+  private static final Logger LOG = LoggerFactory.getLogger(RewatchOnExpireWatcher.class);
 
   enum ActionType {
     EXISTS,
@@ -30,7 +30,7 @@ final class ExpireRewatchWatcher implements Watcher {
   private final Watcher delegate;
   private final AtomicMarkableReference<Object> lastResult;
 
-  ExpireRewatchWatcher(ZKClientService client, ActionType actionType, String path, Watcher delegate) {
+  RewatchOnExpireWatcher(ZKClientService client, ActionType actionType, String path, Watcher delegate) {
     this.client = client;
     this.actionType = actionType;
     this.path = path;
@@ -38,6 +38,10 @@ final class ExpireRewatchWatcher implements Watcher {
     this.lastResult = new AtomicMarkableReference<Object>(null, false);
   }
 
+  /**
+   * Sets the result from the operation that causes this watcher to be set.
+   * @param result
+   */
   void setLastResult(Object result) {
     lastResult.compareAndSet(null, result, false, true);
   }
@@ -45,7 +49,11 @@ final class ExpireRewatchWatcher implements Watcher {
   @Override
   public void process(WatchedEvent event) {
     if (event.getType() != Event.EventType.None) {
-      delegate.process(event);
+      try {
+        delegate.process(event);
+      } catch (Throwable t) {
+        LOG.error("Watcher throws exception.", t);
+      }
     }
 
     if (event.getState() != Event.KeeperState.Expired) {

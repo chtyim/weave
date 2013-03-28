@@ -54,6 +54,13 @@ public final class RetryStrategies {
     };
   }
 
+  /**
+   * Creates a {@link RetryStrategy} that will increase delay exponentially between each retries.
+   * @param baseDelay delay to start with.
+   * @param maxDelay cap of the delay.
+   * @param delayUnit {@link TimeUnit} for the delays.
+   * @return A {@link RetryStrategy}.
+   */
   public static RetryStrategy exponentialDelay(final long baseDelay, final long maxDelay, final TimeUnit delayUnit) {
     Preconditions.checkArgument(baseDelay >= 0, "base delay must be >= 0");
     Preconditions.checkArgument(maxDelay >= 0, "max delay must be >= 0");
@@ -68,6 +75,14 @@ public final class RetryStrategies {
     };
   }
 
+  /**
+   * Creates a {@link RetryStrategy} that will retry until maximum amount of time has been passed since the request,
+   * with the actual delay behavior delegated to another {@link RetryStrategy}.
+   * @param maxElapseTime Maximum amount of time until giving up retry.
+   * @param timeUnit {@link TimeUnit} for the max elapse time.
+   * @param strategy When time elapsed is less than or equal to the limit, this strategy will be called.
+   * @return A {@link RetryStrategy}.
+   */
   public static RetryStrategy timeLimit(long maxElapseTime, TimeUnit timeUnit, final RetryStrategy strategy) {
     Preconditions.checkArgument(maxElapseTime >= 0, "max elapse time must be >= 0");
     final long maxElapseMs = TimeUnit.MILLISECONDS.convert(maxElapseTime, timeUnit);

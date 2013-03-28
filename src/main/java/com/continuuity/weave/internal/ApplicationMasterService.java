@@ -12,14 +12,14 @@ import org.apache.hadoop.yarn.util.ConverterUtils;
 /**
  *
  */
-public class ApplicationMaster extends AbstractExecutionThreadService {
+public class ApplicationMasterService extends AbstractExecutionThreadService {
 
   private final WeaveApplicationSpecification appSpec;
   private final AMRMClient amrmClient;
 
   private volatile Thread runThread;
 
-  public ApplicationMaster(WeaveApplicationSpecification appSpec) {
+  public ApplicationMasterService(WeaveApplicationSpecification appSpec) {
     this.appSpec = appSpec;
 
     // Get the container ID and convert it to ApplicationAttemptId
