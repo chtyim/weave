@@ -19,7 +19,8 @@ public final class ZKClientServices {
   }
 
   /**
-   * Creates a {@link ZKClientService} that will retry failure operations based on the given {@link RetryStrategy}.
+   * Creates a {@link ZKClientService} that will retry interim failure (e.g. connection loss, session expiration)
+   * based on the given {@link RetryStrategy}.
    *
    * @param clientService The {@link ZKClientService} for operations delegation.
    * @param retryStrategy The {@link RetryStrategy} to be invoke when there is operation failure.
