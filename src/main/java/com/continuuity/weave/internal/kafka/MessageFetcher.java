@@ -73,6 +73,7 @@ final class MessageFetcher extends AbstractIterator<FetchedMessage> implements R
 
   private boolean decodeResponse(ChannelBuffer buffer, long nextOffset) {
     boolean hasMessage = false;
+    boolean computeOffset = nextOffset < 0;
     while (buffer.readableBytes() >= 4) {
       int size = buffer.readInt();
       if (buffer.readableBytes() < size) {
@@ -81,7 +82,7 @@ final class MessageFetcher extends AbstractIterator<FetchedMessage> implements R
         }
         break;
       }
-      nextOffset = nextOffset < 0 ? offset.addAndGet(size + 4) : nextOffset;
+      nextOffset = computeOffset ? offset.addAndGet(size + 4) : nextOffset;
       decodeMessage(size, buffer, nextOffset);
       hasMessage = true;
     }

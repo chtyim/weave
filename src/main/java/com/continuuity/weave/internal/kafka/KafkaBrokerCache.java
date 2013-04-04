@@ -4,13 +4,18 @@ import com.continuuity.weave.internal.zk.NodeChildren;
 import com.continuuity.weave.internal.zk.NodeData;
 import com.continuuity.weave.internal.zk.ZKClientService;
 import com.google.common.base.Charsets;
+import com.google.common.base.Function;
 import com.google.common.base.Objects;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Iterables;
+import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 import com.google.common.util.concurrent.AbstractIdleService;
 import com.google.common.util.concurrent.FutureCallback;
 import com.google.common.util.concurrent.Futures;
+import com.google.common.util.concurrent.ListenableFuture;
+import com.google.common.util.concurrent.MoreExecutors;
 import org.apache.zookeeper.KeeperException;
 import org.apache.zookeeper.WatchedEvent;
 import org.apache.zookeeper.Watcher;
@@ -19,6 +24,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.net.InetSocketAddress;
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -62,6 +69,29 @@ final class KafkaBrokerCache extends AbstractIdleService {
   @Override
   protected void shutDown() throws Exception {
     // No-op
+  }
+
+  public InetSocketAddress getBrokerAddress(String topic, int partition) {
+    Set<BrokerInfo> brokerInfos = topicBrokers.get(topic);
+    if (brokerInfos == null || brokerInfos.isEmpty()) {
+      return pickRandomBroker();
+    }
+    List<BrokerInfo> infos = Lists.newArrayListWithCapacity(brokerInfos.size());
+    for (BrokerInfo info : brokerInfos) {
+      if (info.getPartitionSize() > partition) {
+        infos.add(info);
+      }
+    }
+    if (infos.isEmpty()) {
+      return pickRandomBroker();
+    }
+    Collections.shuffle(infos);
+    InetSocketAddress result = brokers.get(infos.get(0).getBrokerId());
+    return result == null ? pickRandomBroker() : result;
+  }
+
+  public InetSocketAddress pickRandomBroker() {
+    return Iterables.getFirst(brokers.entrySet(), null).getValue();
   }
 
   private void getBrokers() {
@@ -138,7 +168,34 @@ final class KafkaBrokerCache extends AbstractIdleService {
     }), new FutureCallback<NodeChildren>() {
       @Override
       public void onSuccess(NodeChildren result) {
-        topicBrokers.put(topic, Sets.<BrokerInfo>newHashSet());
+        List<String> children = result.getChildren();
+        final List<ListenableFuture<BrokerInfo>> futures = Lists.newArrayListWithCapacity(children.size());
+
+        // Fetch data from each broken node
+        for (final String brokerId : children) {
+          Futures.transform(zkClient.getData(path + "/" + brokerId), new Function<NodeData, BrokerInfo>() {
+            @Override
+            public BrokerInfo apply(NodeData input) {
+              return new BrokerInfo(brokerId, Integer.parseInt(new String(input.getData(), Charsets.UTF_8)));
+            }
+          });
+        }
+
+        // When all fetching is done
+        Futures.successfulAsList(futures).addListener(new Runnable() {
+          @Override
+          public void run() {
+            ImmutableSet.Builder<BrokerInfo> brokers = ImmutableSet.builder();
+            for (ListenableFuture<BrokerInfo> future : futures) {
+              try {
+                brokers.add(future.get());
+              } catch (Exception e) {
+                // Exception is ignored, as it will be handled by parent watcher
+              }
+            }
+            topicBrokers.put(topic, brokers.build());
+          }
+        }, MoreExecutors.sameThreadExecutor());
       }
 
       @Override

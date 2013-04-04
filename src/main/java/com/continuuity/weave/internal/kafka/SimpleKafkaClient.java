@@ -41,6 +41,7 @@ import java.util.concurrent.TimeUnit;
 public final class SimpleKafkaClient extends AbstractIdleService implements KafkaClient {
 
   private static final Logger LOG = LoggerFactory.getLogger(SimpleKafkaClient.class);
+  private static final int BROKER_POLL_INTERVAL = 100;
 
   private final ZKClientService zkClientService;
   private final KafkaBrokerCache brokerCache;
@@ -116,13 +117,15 @@ public final class SimpleKafkaClient extends AbstractIdleService implements Kafk
       private ListenableFuture<?> doPublish(String topic, int partition, ChannelBuffer messageSet) {
         final KafkaRequest request = KafkaRequest.createProduce(topic, partition, messageSet);
         final SettableFuture<?> result = SettableFuture.create();
-
-        // TODO:
-        bootstrap.connect(new InetSocketAddress("localhost", 9092)).addListener(new ChannelFutureListener() {
+        bootstrap.connect(getBrokerAddress(topic, partition)).addListener(new ChannelFutureListener() {
           @Override
           public void operationComplete(ChannelFuture future) throws Exception {
-            channelGroup.add(future.getChannel());
-            future.getChannel().write(request).addListener(getChannelFutureListener(result, null));
+            try {
+              channelGroup.add(future.getChannel());
+              future.getChannel().write(request).addListener(getChannelFutureListener(result, null));
+            } catch (Exception e) {
+              result.setException(e);
+            }
           }
         });
 
@@ -136,7 +139,7 @@ public final class SimpleKafkaClient extends AbstractIdleService implements Kafk
     Preconditions.checkArgument(maxSize >= 10, "Message size cannot be smaller than 10.");
 
     final SettableFuture<Channel> channelFuture = SettableFuture.create();
-    bootstrap.connect(new InetSocketAddress("localhost", 9092)).addListener(new ChannelFutureListener() {
+    bootstrap.connect(getBrokerAddress(topic, partition)).addListener(new ChannelFutureListener() {
 
       @Override
       public void operationComplete(ChannelFuture future) throws Exception {
@@ -151,6 +154,19 @@ public final class SimpleKafkaClient extends AbstractIdleService implements Kafk
         Futures.getUnchecked(channelFuture).write(request);
       }
     });
+  }
+
+  private InetSocketAddress getBrokerAddress(String topic, int partition) {
+    InetSocketAddress brokerAddress = brokerCache.getBrokerAddress(topic, partition);
+    while (brokerAddress == null) {
+      try {
+        TimeUnit.MILLISECONDS.sleep(BROKER_POLL_INTERVAL);
+      } catch (InterruptedException e) {
+        return null;
+      }
+      brokerAddress = brokerCache.getBrokerAddress(topic, partition);
+    }
+    return brokerAddress;
   }
 
   private MessageSetEncoder getEncoder(Compression compression) {
