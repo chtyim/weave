@@ -1,15 +1,18 @@
 package com.continuuity.weave.internal;
 
-import com.continuuity.weave.api.WeaveApplicationSpecification;
 import com.continuuity.weave.api.WeaveSpecification;
-import com.google.common.collect.ImmutableMap;
+import com.continuuity.weave.internal.json.WeaveSpecificationAdapter;
+import com.google.common.base.Charsets;
+import com.google.common.io.Files;
 import com.google.common.util.concurrent.MoreExecutors;
 import com.google.common.util.concurrent.Service;
 import com.google.common.util.concurrent.SettableFuture;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.Map;
+import java.io.File;
+import java.io.IOException;
+import java.io.Reader;
 import java.util.concurrent.ExecutionException;
 
 /**
@@ -20,9 +23,24 @@ public final class ApplicationMasterMain {
 
   private static final Logger LOG = LoggerFactory.getLogger(ApplicationMasterMain.class);
 
-  public static void main(String[] args) throws ExecutionException, InterruptedException {
-    WeaveApplicationSpecification appSpec = loadApplicationSpecification();
-    final ApplicationMasterService appMaster = new ApplicationMasterService(args[0], appSpec);
+  /**
+   * Starts the application master.
+   * @param args args[0] - ZooKeeper connection string. args[1] - local resource name for spec file.
+   * @throws ExecutionException
+   * @throws InterruptedException
+   */
+  public static void main(String[] args) throws Exception {
+    final ApplicationMasterService appMaster = new ApplicationMasterService(args[0],
+                                                                            loadWeaveSpec(args[1]),
+                                                                            new File(args[1]));
+
+    Runtime.getRuntime().addShutdownHook(new Thread() {
+      @Override
+      public void run() {
+        LOG.info("Shutdown hook triggered");
+        appMaster.stopAndWait();
+      }
+    });
 
     // Starts the app master
     appMaster.start();
@@ -62,18 +80,12 @@ public final class ApplicationMasterMain {
     completion.get();
   }
 
-  private static WeaveApplicationSpecification loadApplicationSpecification() {
-    // TODO: Suppose loading the WeaveApplicationSpecification from file.
-    return new WeaveApplicationSpecification() {
-      @Override
-      public String getName() {
-        return "Testing";
-      }
-
-      @Override
-      public Map<String, WeaveSpecification> getRunnables() {
-        return ImmutableMap.of();
-      }
-    };
+  private static WeaveSpecification loadWeaveSpec(String spec) throws IOException{
+    Reader reader = Files.newReader(new File(spec), Charsets.UTF_8);
+    try {
+      return WeaveSpecificationAdapter.create().fromJson(reader);
+    } finally {
+      reader.close();
+    }
   }
 }

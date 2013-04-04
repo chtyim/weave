@@ -1,9 +1,11 @@
 package com.continuuity.weave.internal;
 
-import com.continuuity.weave.api.WeaveApplicationSpecification;
-import com.google.common.base.Charsets;
+import com.continuuity.weave.api.RuntimeSpecification;
+import com.continuuity.weave.api.WeaveSpecification;
+import com.continuuity.weave.internal.container.WeaveContainerLauncher;
+import com.continuuity.weave.internal.json.WeaveSpecificationAdapter;
 import com.google.common.base.Preconditions;
-import com.google.common.io.Files;
+import com.google.common.collect.Lists;
 import com.google.common.util.concurrent.AbstractExecutionThreadService;
 import org.apache.hadoop.yarn.api.ApplicationConstants;
 import org.apache.hadoop.yarn.api.protocolrecords.AllocateResponse;
@@ -19,10 +21,14 @@ import org.apache.hadoop.yarn.conf.YarnConfiguration;
 import org.apache.hadoop.yarn.ipc.YarnRPC;
 import org.apache.hadoop.yarn.util.ConverterUtils;
 import org.apache.hadoop.yarn.util.Records;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.File;
-import java.io.PrintWriter;
 import java.util.List;
+import java.util.Map;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -30,10 +36,14 @@ import java.util.concurrent.TimeUnit;
  */
 public final class ApplicationMasterService extends AbstractExecutionThreadService {
 
+  private static final Logger LOG = LoggerFactory.getLogger(ApplicationMasterService.class);
+
   private final String zkConnectStr;
-  private final WeaveApplicationSpecification appSpec;
+  private final WeaveSpecification weaveSpec;
+  private final File weaveSpecFile;
   private final YarnConfiguration yarnConf;
   private final AMRMClient amrmClient;
+  private final Queue<WeaveContainerLauncher> launchers;
   private YarnRPC yarnRPC;
   private Resource maxCapability;
   private Resource minCapability;
@@ -41,11 +51,13 @@ public final class ApplicationMasterService extends AbstractExecutionThreadServi
   private volatile Thread runThread;
 
 
-  public ApplicationMasterService(String zkConnectStr, WeaveApplicationSpecification appSpec) {
+  public ApplicationMasterService(String zkConnectStr, WeaveSpecification weaveSpec, File weaveSpecFile) {
     this.zkConnectStr = zkConnectStr;
-    this.appSpec = appSpec;
+    this.weaveSpec = weaveSpec;
+    this.weaveSpecFile = weaveSpecFile;
 
     this.yarnConf = new YarnConfiguration();
+    this.launchers = new ConcurrentLinkedQueue<WeaveContainerLauncher>();
 
     // Get the container ID and convert it to ApplicationAttemptId
     String containerIdString = System.getenv().get(ApplicationConstants.AM_CONTAINER_ID_ENV);
@@ -56,6 +68,8 @@ public final class ApplicationMasterService extends AbstractExecutionThreadServi
 
   @Override
   protected void startUp() throws Exception {
+    LOG.info("Start application master with spec: " + WeaveSpecificationAdapter.create().toJson(weaveSpec));
+
     yarnRPC = YarnRPC.create(yarnConf);
 
     amrmClient.init(yarnConf);
@@ -68,6 +82,10 @@ public final class ApplicationMasterService extends AbstractExecutionThreadServi
 
   @Override
   protected void shutDown() throws Exception {
+    for (WeaveContainerLauncher launcher : launchers) {
+      launcher.stopAndWait();
+    }
+
     amrmClient.unregisterApplicationMaster(FinalApplicationStatus.SUCCEEDED, null, null);
     amrmClient.stop();
   }
@@ -84,27 +102,16 @@ public final class ApplicationMasterService extends AbstractExecutionThreadServi
   protected void run() throws Exception {
     runThread = Thread.currentThread();
 
-    final PrintWriter writer = new PrintWriter(Files.newWriter(new File("/tmp/appout"), Charsets.UTF_8), true);
-    try {
-      // Simply goes through the spec and create container requests
-  //    for (Map.Entry<String, WeaveSpecification> entry : appSpec.getRunnables().entrySet()) {
-  //      WeaveSpecification weaveSpec = entry.getValue();
-  //      Resource resource = Records.newRecord(Resource.class);
-  //      // TODO:
-  //      resource.setVirtualCores(1);
-  //      resource.setMemory(512);  // in mb
-  //
-  //      Priority priority = Records.newRecord(Priority.class);
-  //
-  //      AMRMClient.ContainerRequest request = new AMRMClient.ContainerRequest(resource, null, null, priority, 1);
-  //      amrmClient.addContainerRequest(request);
-  //    }
+    // TODO: We should be able to declare service start sequence
+    Queue<RuntimeSpecification> runtimeSpecs = Lists.newLinkedList();
 
-      // Kafka Container
+    // Simply goes through the spec and create container requests
+    for (Map.Entry<String,RuntimeSpecification> entry : weaveSpec.getRunnables().entrySet()) {
+      RuntimeSpecification runtimeSpec = entry.getValue();
+
       Resource capability = Records.newRecord(Resource.class);
-      // TODO:
-      capability.setVirtualCores(1);
-      capability.setMemory(512);  // in mb
+      capability.setVirtualCores(runtimeSpec.getResourceSpecification().getCores());
+      capability.setMemory(runtimeSpec.getResourceSpecification().getMemorySize());
 
       Priority priority = Records.newRecord(Priority.class);
       priority.setPriority(0);
@@ -112,34 +119,28 @@ public final class ApplicationMasterService extends AbstractExecutionThreadServi
       AMRMClient.ContainerRequest request = new AMRMClient.ContainerRequest(capability, null, null, priority, 1);
       amrmClient.addContainerRequest(request);
 
-      KafkaContainerManager kafkaManager = null;
-      while (isRunning()) {
-        AllocateResponse allocateResponse = amrmClient.allocate(0.0f);
-        AMResponse amResponse = allocateResponse.getAMResponse();
-        List<Container> allocatedContainers = amResponse.getAllocatedContainers();
-        if (!allocatedContainers.isEmpty()) {
-          // Got the kafka container
-          kafkaManager = new KafkaContainerManager(zkConnectStr,
-                                                   new DefaultProcessLauncher(allocatedContainers.get(0),
-                                                                              yarnRPC, yarnConf));
-          break;
-        }
+      runtimeSpecs.add(entry.getValue());
+    }
 
-        TimeUnit.SECONDS.sleep(1);
+    while (isRunning()) {
+      AllocateResponse allocateResponse = amrmClient.allocate(0.0f);
+      AMResponse amResponse = allocateResponse.getAMResponse();
+      List<Container> containers = amResponse.getAllocatedContainers();
+
+      LOG.info("Containers size: " + containers.size());
+      LOG.info("Containers: " + containers);
+
+      // TODO: Match the resource capability.
+      for (Container container : containers) {
+        RuntimeSpecification runtimeSpec = runtimeSpecs.poll();
+        DefaultProcessLauncher processLauncher = new DefaultProcessLauncher(container, yarnRPC, yarnConf);
+        WeaveContainerLauncher launcher = new WeaveContainerLauncher(weaveSpec, weaveSpecFile, runtimeSpec.getName(),
+                                                                     processLauncher, zkConnectStr);
+        launcher.start();
+        launchers.add(launcher);
       }
 
-      kafkaManager.start();
-
-      while (isRunning()) {
-        AllocateResponse allocateResponse = amrmClient.allocate(0.0f);
-        AMResponse amResponse = allocateResponse.getAMResponse();
-        TimeUnit.SECONDS.sleep(1);
-      }
-    } finally {
-      writer.close();
+      TimeUnit.SECONDS.sleep(1);
     }
   }
-
-
-
 }

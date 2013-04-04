@@ -1,7 +1,5 @@
 package com.continuuity.weave.internal.kafka;
 
-import com.google.common.base.Objects;
-
 import java.nio.ByteBuffer;
 
 /**
