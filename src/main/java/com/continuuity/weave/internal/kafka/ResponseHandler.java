@@ -3,7 +3,7 @@ package com.continuuity.weave.internal.kafka;
 /**
  *
  */
-public interface ResponseHandler {
+interface ResponseHandler {
 
   ResponseHandler NO_OP = new ResponseHandler() {
     @Override

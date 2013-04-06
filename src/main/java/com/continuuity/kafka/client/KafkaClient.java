@@ -1,5 +1,6 @@
-package com.continuuity.weave.internal.kafka;
+package com.continuuity.kafka.client;
 
+import com.continuuity.weave.internal.kafka.Compression;
 import com.google.common.util.concurrent.Service;
 
 import java.util.Iterator;

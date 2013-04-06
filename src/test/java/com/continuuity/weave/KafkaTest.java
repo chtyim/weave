@@ -1,11 +1,12 @@
 package com.continuuity.weave;
 
+import com.continuuity.kafka.client.FetchedMessage;
+import com.continuuity.kafka.client.KafkaClient;
+import com.continuuity.kafka.client.PreparePublish;
 import com.continuuity.weave.internal.kafka.Compression;
-import com.continuuity.weave.internal.kafka.FetchedMessage;
-import com.continuuity.weave.internal.kafka.KafkaClient;
-import com.continuuity.weave.internal.kafka.PreparePublish;
 import com.continuuity.weave.internal.kafka.SimpleKafkaClient;
 import com.google.common.base.Charsets;
+import com.google.common.util.concurrent.Futures;
 import junit.framework.Assert;
 import org.junit.Ignore;
 import org.junit.Test;
@@ -27,29 +28,40 @@ public class KafkaTest {
 
     String topic = "topic" + System.currentTimeMillis();
 
-    PreparePublish preparePublish = kafkaClient.preparePublish(topic, Compression.GZIP);
-    for (int i = 0 ; i < 10; i++) {
-      preparePublish.add((i + " GZip Testing message").getBytes(Charsets.UTF_8), 0);
-    }
-    preparePublish.publish().get();
+    Thread t1 = createPublishThread(kafkaClient, topic, Compression.GZIP, "GZIP Testing message", 10);
+    Thread t2 = createPublishThread(kafkaClient, topic, Compression.NONE, "Testing message", 10);
 
-    preparePublish = kafkaClient.preparePublish(topic, Compression.NONE);
-    for (int i = 0 ; i < 10; i++) {
-      preparePublish.add((i + " Testing message").getBytes(Charsets.UTF_8), 0);
-    }
-    preparePublish.publish().get();
+    t1.start();
+    t2.start();
+
+    Thread t3 = createPublishThread(kafkaClient, topic, Compression.NONE, "More Testing message", 10);
+    t2.join();
+    t3.start();
 
     Iterator<FetchedMessage> consumer = kafkaClient.consume(topic, 0, 0, 1048576);
     int count = 0;
     long startTime = System.nanoTime();
-    while (count < 20 && consumer.hasNext() && secondsPassed(startTime, TimeUnit.NANOSECONDS) < 5) {
+    while (count < 30 && consumer.hasNext() && secondsPassed(startTime, TimeUnit.NANOSECONDS) < 5) {
       System.out.println(Charsets.UTF_8.decode(consumer.next().getBuffer()));
       count++;
     }
 
-    Assert.assertEquals(20, count);
+    Assert.assertEquals(30, count);
 
     kafkaClient.stopAndWait();
+  }
+
+  private Thread createPublishThread(final KafkaClient kafkaClient, final String topic,
+                                     final Compression compression, final String message, final int count) {
+    return new Thread() {
+      public void run() {
+        PreparePublish preparePublish = kafkaClient.preparePublish(topic, compression);
+        for (int i = 0 ; i < count; i++) {
+          preparePublish.add((i + " " + message).getBytes(Charsets.UTF_8), 0);
+        }
+        Futures.getUnchecked(preparePublish.publish());
+      }
+    };
   }
 
   private long secondsPassed(long startTime, TimeUnit startUnit) {

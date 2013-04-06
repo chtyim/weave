@@ -1,12 +1,12 @@
 package com.continuuity.weave.internal.kafka;
 
-import com.continuuity.weave.internal.zk.NodeChildren;
-import com.continuuity.weave.internal.zk.NodeData;
-import com.continuuity.weave.internal.zk.ZKClientService;
+import com.continuuity.zk.NodeChildren;
+import com.continuuity.zk.NodeData;
+import com.continuuity.zk.ZKClientService;
 import com.google.common.base.Charsets;
 import com.google.common.base.Function;
-import com.google.common.base.Objects;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.ImmutableSortedMap;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
@@ -24,10 +24,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.net.InetSocketAddress;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.Set;
+import java.util.SortedMap;
 
 /**
 *
@@ -40,7 +41,8 @@ final class KafkaBrokerCache extends AbstractIdleService {
 
   private final ZKClientService zkClient;
   private final Map<String, InetSocketAddress> brokers;
-  private final Map<String, Set<BrokerInfo>> topicBrokers;
+  // topicBrokers is from topic->partition size->brokerId
+  private final Map<String, SortedMap<Integer, Set<String>>> topicBrokers;
   private final Runnable invokeGetBrokers = new Runnable() {
     @Override
     public void run() {
@@ -71,27 +73,46 @@ final class KafkaBrokerCache extends AbstractIdleService {
     // No-op
   }
 
-  public InetSocketAddress getBrokerAddress(String topic, int partition) {
-    Set<BrokerInfo> brokerInfos = topicBrokers.get(topic);
-    if (brokerInfos == null || brokerInfos.isEmpty()) {
-      return pickRandomBroker();
+  public int getPartitionSize(String topic) {
+    SortedMap<Integer, Set<String>> partitionBrokers = topicBrokers.get(topic);
+    if (partitionBrokers == null || partitionBrokers.isEmpty()) {
+      return 1;
     }
-    List<BrokerInfo> infos = Lists.newArrayListWithCapacity(brokerInfos.size());
-    for (BrokerInfo info : brokerInfos) {
-      if (info.getPartitionSize() > partition) {
-        infos.add(info);
-      }
-    }
-    if (infos.isEmpty()) {
-      return pickRandomBroker();
-    }
-    Collections.shuffle(infos);
-    InetSocketAddress result = brokers.get(infos.get(0).getBrokerId());
-    return result == null ? pickRandomBroker() : result;
+    return partitionBrokers.lastKey();
   }
 
-  public InetSocketAddress pickRandomBroker() {
-    return Iterables.getFirst(brokers.entrySet(), null).getValue();
+  public TopicBroker getBrokerAddress(String topic, int partition) {
+    SortedMap<Integer, Set<String>> partitionBrokers = topicBrokers.get(topic);
+    if (partitionBrokers == null || partitionBrokers.isEmpty()) {
+      return pickRandomBroker(topic);
+    }
+
+    // If the requested partition is greater than supported partition size, randomly pick one
+    if (partition >= partitionBrokers.lastKey()) {
+      return pickRandomBroker(topic);
+    }
+
+    // Randomly pick a partition size and randomly pick a broker from it
+    Random random = new Random();
+    partitionBrokers = partitionBrokers.tailMap(partition + 1);
+    List<Integer> sizes = Lists.newArrayList(partitionBrokers.keySet());
+    Integer partitionSize = pickRandomItem(sizes, random);
+    List<String> ids = Lists.newArrayList(partitionBrokers.get(partitionSize));
+    InetSocketAddress address = brokers.get(ids.get(new Random().nextInt(ids.size())));
+    return address == null ? pickRandomBroker(topic) : new TopicBroker(topic, address, partitionSize);
+  }
+
+  private TopicBroker pickRandomBroker(String topic) {
+    Map.Entry<String, InetSocketAddress> entry = Iterables.getFirst(brokers.entrySet(), null);
+    if (entry == null) {
+      return null;
+    }
+    InetSocketAddress address = entry.getValue();
+    return new TopicBroker(topic, address, 0);
+  }
+
+  private <T> T pickRandomItem(List<T> list, Random random) {
+    return list.get(random.nextInt(list.size()));
   }
 
   private void getBrokers() {
@@ -169,31 +190,37 @@ final class KafkaBrokerCache extends AbstractIdleService {
       @Override
       public void onSuccess(NodeChildren result) {
         List<String> children = result.getChildren();
-        final List<ListenableFuture<BrokerInfo>> futures = Lists.newArrayListWithCapacity(children.size());
+        final List<ListenableFuture<BrokerPartition>> futures = Lists.newArrayListWithCapacity(children.size());
 
         // Fetch data from each broken node
         for (final String brokerId : children) {
-          Futures.transform(zkClient.getData(path + "/" + brokerId), new Function<NodeData, BrokerInfo>() {
+          Futures.transform(zkClient.getData(path + "/" + brokerId), new Function<NodeData, BrokerPartition>() {
             @Override
-            public BrokerInfo apply(NodeData input) {
-              return new BrokerInfo(brokerId, Integer.parseInt(new String(input.getData(), Charsets.UTF_8)));
+            public BrokerPartition apply(NodeData input) {
+              return new BrokerPartition(brokerId, Integer.parseInt(new String(input.getData(), Charsets.UTF_8)));
             }
           });
         }
 
-        // When all fetching is done
+        // When all fetching is done, build the partition size->broker map for this topic
         Futures.successfulAsList(futures).addListener(new Runnable() {
           @Override
           public void run() {
-            ImmutableSet.Builder<BrokerInfo> brokers = ImmutableSet.builder();
-            for (ListenableFuture<BrokerInfo> future : futures) {
+            Map<Integer, Set<String>> partitionBrokers = Maps.newHashMap();
+            for (ListenableFuture<BrokerPartition> future : futures) {
               try {
-                brokers.add(future.get());
+                BrokerPartition info = future.get();
+                Set<String> brokerSet = partitionBrokers.get(info.getPartitionSize());
+                if (brokerSet == null) {
+                  brokerSet = Sets.newHashSet();
+                  partitionBrokers.put(info.getPartitionSize(), brokerSet);
+                }
+                brokerSet.add(info.getBrokerId());
               } catch (Exception e) {
                 // Exception is ignored, as it will be handled by parent watcher
               }
             }
-            topicBrokers.put(topic, brokers.build());
+            topicBrokers.put(topic, ImmutableSortedMap.copyOf(partitionBrokers));
           }
         }, MoreExecutors.sameThreadExecutor());
       }
@@ -223,8 +250,8 @@ final class KafkaBrokerCache extends AbstractIdleService {
 
     @Override
     public final void onFailure(Throwable t) {
-      if (isNotExists(t)) {
-        LOG.error("Fail to watch for kafka brokers.", t);
+      if (!isNotExists(t)) {
+        LOG.error("Fail to watch for kafka brokers: " + path, t);
         return;
       }
 
@@ -262,11 +289,11 @@ final class KafkaBrokerCache extends AbstractIdleService {
     }
   }
 
-  private static final class BrokerInfo {
+  private static final class BrokerPartition {
     private final String brokerId;
     private final int partitionSize;
 
-    private BrokerInfo(String brokerId, int partitionSize) {
+    private BrokerPartition(String brokerId, int partitionSize) {
       this.brokerId = brokerId;
       this.partitionSize = partitionSize;
     }
@@ -277,24 +304,6 @@ final class KafkaBrokerCache extends AbstractIdleService {
 
     public int getPartitionSize() {
       return partitionSize;
-    }
-
-    @Override
-    public boolean equals(Object o) {
-      if (this == o) {
-        return true;
-      }
-      if (o == null || getClass() != o.getClass()) {
-        return false;
-      }
-
-      BrokerInfo that = (BrokerInfo) o;
-      return brokerId.equals(that.getBrokerId());
-    }
-
-    @Override
-    public int hashCode() {
-      return Objects.hashCode(brokerId);
     }
   }
 }

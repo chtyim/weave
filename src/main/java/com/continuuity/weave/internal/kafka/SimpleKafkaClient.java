@@ -1,8 +1,11 @@
 package com.continuuity.weave.internal.kafka;
 
-import com.continuuity.weave.internal.zk.RetryStrategies;
-import com.continuuity.weave.internal.zk.ZKClientService;
-import com.continuuity.weave.internal.zk.ZKClientServices;
+import com.continuuity.kafka.client.FetchedMessage;
+import com.continuuity.kafka.client.KafkaClient;
+import com.continuuity.kafka.client.PreparePublish;
+import com.continuuity.zk.RetryStrategies;
+import com.continuuity.zk.ZKClientService;
+import com.continuuity.zk.ZKClientServices;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
@@ -20,13 +23,10 @@ import org.jboss.netty.channel.ChannelFutureListener;
 import org.jboss.netty.channel.ChannelPipeline;
 import org.jboss.netty.channel.ChannelPipelineFactory;
 import org.jboss.netty.channel.Channels;
-import org.jboss.netty.channel.group.ChannelGroup;
-import org.jboss.netty.channel.group.DefaultChannelGroup;
 import org.jboss.netty.channel.socket.nio.NioClientSocketChannelFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.util.Iterator;
 import java.util.List;
@@ -34,6 +34,7 @@ import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  *
@@ -45,8 +46,9 @@ public final class SimpleKafkaClient extends AbstractIdleService implements Kafk
 
   private final ZKClientService zkClientService;
   private final KafkaBrokerCache brokerCache;
-  private ClientBootstrap bootstrap;
-  private ChannelGroup channelGroup;
+//  private ClientBootstrap bootstrap;
+//  private ChannelGroup channelGroup;
+  private ConnectionPool connectionPool;
 
   public SimpleKafkaClient(String zkConnectStr) {
     zkClientService = ZKClientServices.reWatchOnExpire(
@@ -60,21 +62,24 @@ public final class SimpleKafkaClient extends AbstractIdleService implements Kafk
   protected void startUp() throws Exception {
     zkClientService.startAndWait();
     brokerCache.startAndWait();
-    channelGroup = new DefaultChannelGroup();
+//    channelGroup = new DefaultChannelGroup();
     ThreadFactory threadFactory = new ThreadFactoryBuilder()
                                       .setDaemon(true)
                                       .setNameFormat("kafka-client-netty-%d")
                                       .build();
 
-    bootstrap = new ClientBootstrap(new NioClientSocketChannelFactory(Executors.newSingleThreadExecutor(threadFactory),
-                                                                      Executors.newFixedThreadPool(4, threadFactory)));
+    ClientBootstrap bootstrap = new ClientBootstrap(new NioClientSocketChannelFactory(
+                                                      Executors.newSingleThreadExecutor(threadFactory),
+                                                      Executors.newFixedThreadPool(4, threadFactory)));
     bootstrap.setPipelineFactory(new KafkaChannelPipelineFactory());
+    connectionPool = new ConnectionPool(bootstrap);
   }
 
   @Override
   protected void shutDown() throws Exception {
-    channelGroup.close();
-    bootstrap.releaseExternalResources();
+//    channelGroup.close();
+    connectionPool.close();
+//    bootstrap.releaseExternalResources();
     brokerCache.stopAndWait();
     zkClientService.stopAndWait();
   }
@@ -117,12 +122,14 @@ public final class SimpleKafkaClient extends AbstractIdleService implements Kafk
       private ListenableFuture<?> doPublish(String topic, int partition, ChannelBuffer messageSet) {
         final KafkaRequest request = KafkaRequest.createProduce(topic, partition, messageSet);
         final SettableFuture<?> result = SettableFuture.create();
-        bootstrap.connect(getBrokerAddress(topic, partition)).addListener(new ChannelFutureListener() {
+        final ConnectionPool.ConnectResult connection =
+              connectionPool.connect(getTopicBroker(topic, partition).getAddress());
+
+        connection.getChannelFuture().addListener(new ChannelFutureListener() {
           @Override
           public void operationComplete(ChannelFuture future) throws Exception {
             try {
-              channelGroup.add(future.getChannel());
-              future.getChannel().write(request).addListener(getChannelFutureListener(result, null));
+              future.getChannel().write(request).addListener(getPublishChannelFutureListener(result, null, connection));
             } catch (Exception e) {
               result.setException(e);
             }
@@ -135,38 +142,65 @@ public final class SimpleKafkaClient extends AbstractIdleService implements Kafk
   }
 
   @Override
-  public Iterator<FetchedMessage> consume(String topic, int partition, long offset, int maxSize) {
+  public Iterator<FetchedMessage> consume(final String topic, final int partition, long offset, int maxSize) {
     Preconditions.checkArgument(maxSize >= 10, "Message size cannot be smaller than 10.");
 
-    final SettableFuture<Channel> channelFuture = SettableFuture.create();
-    bootstrap.connect(getBrokerAddress(topic, partition)).addListener(new ChannelFutureListener() {
+    // Connect to broker. Consumer connection are long connection. No need to worry about reuse.
+    final AtomicReference<ChannelFuture> channelFutureRef = new AtomicReference<ChannelFuture>(
+          connectionPool.connect(getTopicBroker(topic, partition).getAddress()).getChannelFuture());
 
-      @Override
-      public void operationComplete(ChannelFuture future) throws Exception {
-        channelGroup.add(future.getChannel());
-        channelFuture.set(future.getChannel());
-      }
-    });
     return new MessageFetcher(topic, partition, offset, maxSize, new KafkaRequestSender() {
 
       @Override
       public void send(final KafkaRequest request) {
-        Futures.getUnchecked(channelFuture).write(request);
+        try {
+          // Try to send the request
+          Channel channel = channelFutureRef.get().getChannel();
+          if (!channel.write(request).await().isSuccess()) {
+            // If failed, retry
+            channel.close();
+            ChannelFuture channelFuture = connectionPool.connect(
+                                              getTopicBroker(topic, partition).getAddress()).getChannelFuture();
+            channelFutureRef.set(channelFuture);
+            channelFuture.addListener(new ChannelFutureListener() {
+              @Override
+              public void operationComplete(ChannelFuture channelFuture) throws Exception {
+                send(request);
+              }
+            });
+          }
+        } catch (InterruptedException e) {
+          // Ignore it
+          LOG.info("Interrupted when sending consume request", e);
+        }
       }
     });
   }
 
-  private InetSocketAddress getBrokerAddress(String topic, int partition) {
-    InetSocketAddress brokerAddress = brokerCache.getBrokerAddress(topic, partition);
-    while (brokerAddress == null) {
+//  private ChannelFuture connect(InetSocketAddress address) {
+//    connectionPool.connect(address)
+//    result.addListener(new ChannelFutureListener() {
+//      @Override
+//      public void operationComplete(ChannelFuture channelFuture) throws Exception {
+//        if (channelFuture.isSuccess()) {
+//          channelGroup.add(channelFuture.getChannel());
+//        }
+//      }
+//    });
+//    return result;
+//  }
+
+  private TopicBroker getTopicBroker(String topic, int partition) {
+    TopicBroker topicBroker = brokerCache.getBrokerAddress(topic, partition);
+    while (topicBroker == null) {
       try {
         TimeUnit.MILLISECONDS.sleep(BROKER_POLL_INTERVAL);
       } catch (InterruptedException e) {
         return null;
       }
-      brokerAddress = brokerCache.getBrokerAddress(topic, partition);
+      topicBroker = brokerCache.getBrokerAddress(topic, partition);
     }
-    return brokerAddress;
+    return topicBroker;
   }
 
   private MessageSetEncoder getEncoder(Compression compression) {
@@ -180,7 +214,8 @@ public final class SimpleKafkaClient extends AbstractIdleService implements Kafk
     }
   }
 
-  private <V> ChannelFutureListener getChannelFutureListener(final SettableFuture<V> result, final V resultObj) {
+  private <V> ChannelFutureListener getPublishChannelFutureListener(final SettableFuture<V> result, final V resultObj,
+                                                                    final ConnectionPool.ConnectionReleaser releaser) {
     return new ChannelFutureListener() {
       @Override
       public void operationComplete(ChannelFuture future) throws Exception {
@@ -193,8 +228,7 @@ public final class SimpleKafkaClient extends AbstractIdleService implements Kafk
             result.setException(future.getCause());
           }
         } finally {
-          // TODO: Reuse connection.
-          future.getChannel().close();
+          releaser.release();
         }
       }
     };

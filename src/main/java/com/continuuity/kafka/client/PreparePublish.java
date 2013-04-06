@@ -1,4 +1,4 @@
-package com.continuuity.weave.internal.kafka;
+package com.continuuity.kafka.client;
 
 import com.google.common.util.concurrent.ListenableFuture;
 

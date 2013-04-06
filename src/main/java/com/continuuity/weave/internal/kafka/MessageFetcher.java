@@ -1,5 +1,6 @@
 package com.continuuity.weave.internal.kafka;
 
+import com.continuuity.kafka.client.FetchedMessage;
 import com.google.common.base.Throwables;
 import com.google.common.collect.AbstractIterator;
 import com.google.common.io.ByteStreams;
@@ -105,7 +106,7 @@ final class MessageFetcher extends AbstractIterator<FetchedMessage> implements R
   private void enqueueMessage(Compression compression, ChannelBuffer payload, long nextOffset) {
     switch (compression) {
       case NONE:
-        messages.add(FetchResult.success(new FetchedMessage(nextOffset, payload.toByteBuffer())));
+        messages.add(FetchResult.success(new BasicFetchedMessage(nextOffset, payload.toByteBuffer())));
         break;
       case GZIP:
         try {
