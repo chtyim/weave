@@ -1,4 +1,4 @@
-package com.continuuity.weave.internal.kafka;
+package com.continuuity.internal.kafka.client;
 
 import org.jboss.netty.channel.ChannelHandlerContext;
 import org.jboss.netty.channel.MessageEvent;

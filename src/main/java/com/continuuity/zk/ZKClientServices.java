@@ -1,7 +1,7 @@
 package com.continuuity.zk;
 
-import com.continuuity.weave.internal.zk.FailureRetryZKClientService;
-import com.continuuity.weave.internal.zk.RewatchOnExpireZKClientService;
+import com.continuuity.internal.zk.FailureRetryZKClientService;
+import com.continuuity.internal.zk.RewatchOnExpireZKClientService;
 
 /**
  * Provides static factory method to create {@link ZKClientService} with modified behaviors.

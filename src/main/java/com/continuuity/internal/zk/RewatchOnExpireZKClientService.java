@@ -1,6 +1,6 @@
-package com.continuuity.weave.internal.zk;
+package com.continuuity.internal.zk;
 
-import com.continuuity.weave.internal.zk.RewatchOnExpireWatcher.ActionType;
+import com.continuuity.internal.zk.RewatchOnExpireWatcher.ActionType;
 import com.continuuity.zk.NodeChildren;
 import com.continuuity.zk.NodeData;
 import com.continuuity.zk.OperationFuture;

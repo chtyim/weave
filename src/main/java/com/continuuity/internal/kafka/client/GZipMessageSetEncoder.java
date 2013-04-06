@@ -1,4 +1,4 @@
-package com.continuuity.weave.internal.kafka;
+package com.continuuity.internal.kafka.client;
 
 import com.google.common.base.Throwables;
 import org.jboss.netty.buffer.ChannelBuffer;

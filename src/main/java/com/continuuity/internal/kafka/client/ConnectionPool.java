@@ -1,4 +1,4 @@
-package com.continuuity.weave.internal.kafka;
+package com.continuuity.internal.kafka.client;
 
 import com.google.common.collect.Maps;
 import org.jboss.netty.bootstrap.ClientBootstrap;

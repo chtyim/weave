@@ -1,6 +1,6 @@
 package com.continuuity.zk;
 
-import com.continuuity.weave.internal.zk.DefaultZKClientService;
+import com.continuuity.internal.zk.DefaultZKClientService;
 import com.google.common.base.Supplier;
 import com.google.common.util.concurrent.Service;
 import org.apache.zookeeper.CreateMode;

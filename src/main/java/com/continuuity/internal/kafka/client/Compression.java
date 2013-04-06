@@ -1,4 +1,4 @@
-package com.continuuity.weave.internal.kafka;
+package com.continuuity.internal.kafka.client;
 
 /**
 *

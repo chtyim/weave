@@ -1,4 +1,4 @@
-package com.continuuity.weave.internal.zk;
+package com.continuuity.internal.zk;
 
 import org.apache.zookeeper.KeeperException;
 
