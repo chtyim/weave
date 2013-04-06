@@ -1,4 +1,4 @@
-package com.continuuity.weave.internal.zk;
+package com.continuuity.zk;
 
 /**
  * Provides strategy to use for operation retries.

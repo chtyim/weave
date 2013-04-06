@@ -1,9 +1,9 @@
 package com.continuuity.weave.zk;
 
-import com.continuuity.weave.internal.zk.NodeChildren;
-import com.continuuity.weave.internal.zk.RetryStrategies;
-import com.continuuity.weave.internal.zk.ZKClientService;
-import com.continuuity.weave.internal.zk.ZKClientServices;
+import com.continuuity.zk.NodeChildren;
+import com.continuuity.zk.RetryStrategies;
+import com.continuuity.zk.ZKClientService;
+import com.continuuity.zk.ZKClientServices;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.io.Files;
 import com.google.common.util.concurrent.FutureCallback;

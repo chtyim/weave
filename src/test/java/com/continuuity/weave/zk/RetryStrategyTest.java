@@ -1,7 +1,7 @@
 package com.continuuity.weave.zk;
 
-import com.continuuity.weave.internal.zk.RetryStrategies;
-import com.continuuity.weave.internal.zk.RetryStrategy;
+import com.continuuity.zk.RetryStrategies;
+import com.continuuity.zk.RetryStrategy;
 import junit.framework.Assert;
 import org.junit.Test;
 

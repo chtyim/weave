@@ -1,4 +1,4 @@
-package com.continuuity.weave.internal.zk;
+package com.continuuity.zk;
 
 import com.google.common.util.concurrent.ListenableFuture;
 

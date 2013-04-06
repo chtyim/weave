@@ -1,18 +1,22 @@
 package com.continuuity.weave.internal.zk;
 
 import com.continuuity.weave.internal.zk.RewatchOnExpireWatcher.ActionType;
+import com.continuuity.zk.NodeChildren;
+import com.continuuity.zk.NodeData;
+import com.continuuity.zk.OperationFuture;
+import com.continuuity.zk.ZKClientService;
 import com.google.common.util.concurrent.FutureCallback;
 import com.google.common.util.concurrent.Futures;
 import org.apache.zookeeper.Watcher;
 import org.apache.zookeeper.data.Stat;
 
 /**
- * A {@link ZKClientService} that will rewatch automatically when session expired and reconnect.
+ * A {@link com.continuuity.zk.ZKClientService} that will rewatch automatically when session expired and reconnect.
  * The rewatch logic is mainly done in {@link RewatchOnExpireWatcher}.
  */
-final class RewatchOnExpireZKClientService extends ForwardingZKClientService {
+public final class RewatchOnExpireZKClientService extends ForwardingZKClientService {
 
-  RewatchOnExpireZKClientService(ZKClientService delegate) {
+  public RewatchOnExpireZKClientService(ZKClientService delegate) {
     super(delegate);
   }
 

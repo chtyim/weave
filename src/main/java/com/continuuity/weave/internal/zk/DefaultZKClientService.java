@@ -1,5 +1,9 @@
 package com.continuuity.weave.internal.zk;
 
+import com.continuuity.zk.NodeChildren;
+import com.continuuity.zk.NodeData;
+import com.continuuity.zk.OperationFuture;
+import com.continuuity.zk.ZKClientService;
 import com.google.common.base.Function;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Supplier;
@@ -32,9 +36,9 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * The base implementation of {@link ZKClientService}.
+ * The base implementation of {@link com.continuuity.zk.ZKClientService}.
  */
-final class DefaultZKClientService implements ZKClientService {
+public final class DefaultZKClientService implements ZKClientService {
 
   private static final Logger LOG = LoggerFactory.getLogger(DefaultZKClientService.class);
 
@@ -46,7 +50,7 @@ final class DefaultZKClientService implements ZKClientService {
   private final Service serviceDelegate;
   private ExecutorService eventExecutor;
 
-  DefaultZKClientService(String zkStr, int sessionTimeout, Watcher connectionWatcher) {
+  public DefaultZKClientService(String zkStr, int sessionTimeout, Watcher connectionWatcher) {
     this.zkStr = zkStr;
     this.sessionTimeout = sessionTimeout;
     this.connectionWatcher = wrapWatcher(connectionWatcher);

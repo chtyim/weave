@@ -1,11 +1,11 @@
-package com.continuuity.weave.internal.zk;
+package com.continuuity.zk;
 
 import org.apache.zookeeper.data.Stat;
 
 import java.util.List;
 
 /**
- * Represents result of call to {@link ZKClientService#getChildren(String, org.apache.zookeeper.Watcher)} method.
+ * Represents result of call to {@link com.continuuity.zk.ZKClientService#getChildren(String, org.apache.zookeeper.Watcher)} method.
  */
 public interface NodeChildren {
 

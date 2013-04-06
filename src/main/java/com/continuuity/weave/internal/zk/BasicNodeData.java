@@ -1,5 +1,6 @@
 package com.continuuity.weave.internal.zk;
 
+import com.continuuity.zk.NodeData;
 import com.google.common.base.Objects;
 import org.apache.zookeeper.data.Stat;
 

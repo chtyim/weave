@@ -1,5 +1,9 @@
 package com.continuuity.weave.internal.zk;
 
+import com.continuuity.zk.NodeChildren;
+import com.continuuity.zk.NodeData;
+import com.continuuity.zk.OperationFuture;
+import com.continuuity.zk.ZKClientService;
 import com.google.common.base.Supplier;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;

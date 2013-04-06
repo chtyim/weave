@@ -1,12 +1,13 @@
 package com.continuuity.weave.internal.zk;
 
+import com.continuuity.zk.OperationFuture;
 import com.google.common.util.concurrent.AbstractFuture;
 
 import javax.annotation.Nullable;
 import java.util.concurrent.Executor;
 
 /**
- * An implementation for {@link OperationFuture} that allows setting result directly.
+ * An implementation for {@link com.continuuity.zk.OperationFuture} that allows setting result directly.
  * Also, all listener callback will be fired from the given executor.
  */
 final class SettableOperationFuture<V> extends AbstractFuture<V> implements OperationFuture<V> {

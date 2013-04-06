@@ -1,11 +1,11 @@
-package com.continuuity.weave.internal.zk;
+package com.continuuity.zk;
 
 import org.apache.zookeeper.data.Stat;
 
 import javax.annotation.Nullable;
 
 /**
- * Represents result of call to {@link ZKClientService#getData(String, org.apache.zookeeper.Watcher)}.
+ * Represents result of call to {@link com.continuuity.zk.ZKClientService#getData(String, org.apache.zookeeper.Watcher)}.
  */
 public interface NodeData {
 
