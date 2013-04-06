@@ -23,6 +23,7 @@ public final class EchoServer extends AbstractWeaveRunnable {
   private static final Logger LOG = LoggerFactory.getLogger(EchoServer.class);
 
   private volatile boolean running;
+  private volatile Thread runThread;
 
   public EchoServer(int port) {
     super(ImmutableMap.of("port", Integer.toString(port)));
@@ -37,6 +38,7 @@ public final class EchoServer extends AbstractWeaveRunnable {
   @Override
   public void run() {
     try {
+      runThread = Thread.currentThread();
       ServerSocket serverSocket = new ServerSocket(Integer.parseInt(getArgument("port")));
 
       while (running) {
@@ -65,5 +67,9 @@ public final class EchoServer extends AbstractWeaveRunnable {
   @Override
   public void stop() {
     running = false;
+    Thread t = runThread;
+    if (t != null) {
+      t.interrupt();
+    }
   }
 }
