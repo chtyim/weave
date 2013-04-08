@@ -5,7 +5,10 @@ import com.continuuity.weave.api.ResourceSpecification;
 import com.continuuity.weave.api.RuntimeSpecification;
 import com.continuuity.weave.api.WeaveRunnableSpecification;
 import com.continuuity.weave.api.WeaveSpecification;
+import com.continuuity.weave.internal.json.WeaveSpecificationCodec.WeaveSpecificationOrderCoder;
+import com.google.common.base.Charsets;
 import com.google.common.collect.Maps;
+import com.google.common.io.Files;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.TypeAdapter;
@@ -15,6 +18,7 @@ import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonToken;
 import com.google.gson.stream.JsonWriter;
 
+import java.io.File;
 import java.io.IOException;
 import java.io.Reader;
 import java.io.Writer;
@@ -37,6 +41,7 @@ public final class WeaveSpecificationAdapter {
     gson = new GsonBuilder()
               .serializeNulls()
               .registerTypeAdapter(WeaveSpecification.class, new WeaveSpecificationCodec())
+              .registerTypeAdapter(WeaveSpecification.Order.class, new WeaveSpecificationOrderCoder())
               .registerTypeAdapter(RuntimeSpecification.class, new RuntimeSpecificationCodec())
               .registerTypeAdapter(WeaveRunnableSpecification.class, new WeaveRunnableSpecificationCodec())
               .registerTypeAdapter(ResourceSpecification.class, new ResourceSpecificationCodec())
@@ -53,12 +58,30 @@ public final class WeaveSpecificationAdapter {
     gson.toJson(spec, WeaveSpecification.class, writer);
   }
 
+  public void toJson(WeaveSpecification spec, File file) throws IOException {
+    Writer writer = Files.newWriter(file, Charsets.UTF_8);
+    try {
+      toJson(spec, writer);
+    } finally {
+      writer.close();
+    }
+  }
+
   public WeaveSpecification fromJson(String json) {
     return gson.fromJson(json, WeaveSpecification.class);
   }
 
   public WeaveSpecification fromJson(Reader reader) {
     return gson.fromJson(reader, WeaveSpecification.class);
+  }
+
+  public WeaveSpecification fromJson(File file) throws IOException {
+    Reader reader = Files.newReader(file, Charsets.UTF_8);
+    try {
+      return fromJson(reader);
+    } finally {
+      reader.close();
+    }
   }
 
   // This is to get around gson ignoring of inner class

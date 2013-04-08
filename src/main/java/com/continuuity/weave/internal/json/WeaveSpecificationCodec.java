@@ -13,11 +13,13 @@ import com.google.gson.JsonSerializationContext;
 import com.google.gson.JsonSerializer;
 
 import java.lang.reflect.Type;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
-*
-*/
+ * An implementation of gson serializer/deserializer {@link WeaveSpecification}.
+ */
 final class WeaveSpecificationCodec implements JsonSerializer<WeaveSpecification>,
                                                JsonDeserializer<WeaveSpecification> {
 
@@ -27,6 +29,8 @@ final class WeaveSpecificationCodec implements JsonSerializer<WeaveSpecification
     json.addProperty("name", src.getName());
     json.add("runnables", context.serialize(src.getRunnables(),
                                             new TypeToken<Map<String, RuntimeSpecification>>(){}.getType()));
+    json.add("orders", context.serialize(src.getOrders(),
+                                         new TypeToken<List<WeaveSpecification.Order>>(){}.getType()));
 
     return json;
   }
@@ -39,7 +43,32 @@ final class WeaveSpecificationCodec implements JsonSerializer<WeaveSpecification
     String name = jsonObj.get("name").getAsString();
     Map<String, RuntimeSpecification> runnables = context.deserialize(
       jsonObj.get("runnables"), new TypeToken<Map<String, RuntimeSpecification>>(){}.getType());
+    List<WeaveSpecification.Order> orders = context.deserialize(
+      jsonObj.get("orders"), new TypeToken<List<WeaveSpecification.Order>>(){}.getType());
 
-    return new DefaultWeaveSpecification(name, runnables);
+    return new DefaultWeaveSpecification(name, runnables, orders);
+  }
+
+  static final class WeaveSpecificationOrderCoder implements JsonSerializer<WeaveSpecification.Order>,
+                                                             JsonDeserializer<WeaveSpecification.Order> {
+
+    @Override
+    public JsonElement serialize(WeaveSpecification.Order src, Type typeOfSrc, JsonSerializationContext context) {
+      JsonObject json = new JsonObject();
+      json.add("names", context.serialize(src.getNames(), new TypeToken<Set<String>>(){}.getType()));
+      json.addProperty("type", src.getType().name());
+      return json;
+    }
+
+    @Override
+    public WeaveSpecification.Order deserialize(JsonElement json, Type typeOfT,
+                                                JsonDeserializationContext context) throws JsonParseException {
+      JsonObject jsonObj = json.getAsJsonObject();
+
+      Set<String> names = context.deserialize(jsonObj.get("names"), new TypeToken<Set<String>>(){}.getType());
+      WeaveSpecification.Order.Type type = WeaveSpecification.Order.Type.valueOf(jsonObj.get("type").getAsString());
+
+      return new DefaultWeaveSpecification.DefaultOrder(names, type);
+    }
   }
 }

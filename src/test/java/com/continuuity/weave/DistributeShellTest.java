@@ -3,7 +3,7 @@ package com.continuuity.weave;
 import com.continuuity.weave.api.WeaveController;
 import com.continuuity.weave.api.WeaveRunnerService;
 import com.continuuity.weave.api.logging.PrinterLogHandler;
-import com.continuuity.weave.internal.YarnWeaveRunnerService;
+import com.continuuity.weave.internal.yarn.YarnWeaveRunnerService;
 import com.continuuity.weave.zk.InMemoryZKServer;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.yarn.conf.YarnConfiguration;

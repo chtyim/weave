@@ -3,6 +3,7 @@ package com.continuuity.internal.kafka.client;
 import com.continuuity.kafka.client.FetchedMessage;
 import com.continuuity.kafka.client.KafkaClient;
 import com.continuuity.kafka.client.PreparePublish;
+import com.continuuity.weave.internal.utils.Threads;
 import com.continuuity.zk.RetryStrategies;
 import com.continuuity.zk.ZKClientService;
 import com.continuuity.zk.ZKClientServices;
@@ -13,7 +14,6 @@ import com.google.common.util.concurrent.AbstractIdleService;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.SettableFuture;
-import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import org.jboss.netty.bootstrap.ClientBootstrap;
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.buffer.ChannelBuffers;
@@ -46,8 +46,6 @@ public final class SimpleKafkaClient extends AbstractIdleService implements Kafk
 
   private final ZKClientService zkClientService;
   private final KafkaBrokerCache brokerCache;
-//  private ClientBootstrap bootstrap;
-//  private ChannelGroup channelGroup;
   private ConnectionPool connectionPool;
 
   public SimpleKafkaClient(String zkConnectStr) {
@@ -62,12 +60,7 @@ public final class SimpleKafkaClient extends AbstractIdleService implements Kafk
   protected void startUp() throws Exception {
     zkClientService.startAndWait();
     brokerCache.startAndWait();
-//    channelGroup = new DefaultChannelGroup();
-    ThreadFactory threadFactory = new ThreadFactoryBuilder()
-                                      .setDaemon(true)
-                                      .setNameFormat("kafka-client-netty-%d")
-                                      .build();
-
+    ThreadFactory threadFactory = Threads.createDaemonThreadFactory("kafka-client-netty-%d");
     ClientBootstrap bootstrap = new ClientBootstrap(new NioClientSocketChannelFactory(
                                                       Executors.newSingleThreadExecutor(threadFactory),
                                                       Executors.newFixedThreadPool(4, threadFactory)));
@@ -77,9 +70,7 @@ public final class SimpleKafkaClient extends AbstractIdleService implements Kafk
 
   @Override
   protected void shutDown() throws Exception {
-//    channelGroup.close();
     connectionPool.close();
-//    bootstrap.releaseExternalResources();
     brokerCache.stopAndWait();
     zkClientService.stopAndWait();
   }
@@ -177,19 +168,6 @@ public final class SimpleKafkaClient extends AbstractIdleService implements Kafk
     });
   }
 
-//  private ChannelFuture connect(InetSocketAddress address) {
-//    connectionPool.connect(address)
-//    result.addListener(new ChannelFutureListener() {
-//      @Override
-//      public void operationComplete(ChannelFuture channelFuture) throws Exception {
-//        if (channelFuture.isSuccess()) {
-//          channelGroup.add(channelFuture.getChannel());
-//        }
-//      }
-//    });
-//    return result;
-//  }
-
   private TopicBroker getTopicBroker(String topic, int partition) {
     TopicBroker topicBroker = brokerCache.getBrokerAddress(topic, partition);
     while (topicBroker == null) {
@@ -208,7 +186,7 @@ public final class SimpleKafkaClient extends AbstractIdleService implements Kafk
       case GZIP:
         return new GZipMessageSetEncoder();
       case SNAPPY:
-//        break;
+        return new SnappyMessageSetEncoder();
       default:
         return new IdentityMessageSetEncoder();
     }

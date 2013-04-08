@@ -1,15 +1,17 @@
 package com.continuuity.internal.kafka.client;
 
 import com.continuuity.kafka.client.FetchedMessage;
+import com.continuuity.weave.internal.utils.Threads;
 import com.google.common.base.Throwables;
 import com.google.common.collect.AbstractIterator;
 import com.google.common.io.ByteStreams;
-import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.buffer.ChannelBufferInputStream;
 import org.jboss.netty.buffer.ChannelBufferOutputStream;
 import org.jboss.netty.buffer.ChannelBuffers;
+import org.xerial.snappy.SnappyInputStream;
 
+import java.io.IOException;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -47,10 +49,8 @@ final class MessageFetcher extends AbstractIterator<FetchedMessage> implements R
     this.offset = new AtomicLong(offset);
     this.maxSize = maxSize;
     this.messages = new LinkedBlockingQueue<FetchResult>();
-    this.scheduler = Executors.newSingleThreadScheduledExecutor(new ThreadFactoryBuilder()
-                                                                  .setDaemon(true)
-                                                                  .setNameFormat("kafka-" + topic + "-consumer")
-                                                                  .build());
+    this.scheduler = Executors.newSingleThreadScheduledExecutor(
+                        Threads.createDaemonThreadFactory("kafka-" + topic + "-consumer"));
   }
 
   @Override
@@ -109,25 +109,51 @@ final class MessageFetcher extends AbstractIterator<FetchedMessage> implements R
         messages.add(FetchResult.success(new BasicFetchedMessage(nextOffset, payload.toByteBuffer())));
         break;
       case GZIP:
+        decodeResponse(gzipUncompress(payload), nextOffset);
+        break;
+      case SNAPPY:
+        decodeResponse(snappyUncompress(payload), nextOffset);
+        break;
+    }
+  }
+
+  private ChannelBuffer gzipUncompress(ChannelBuffer source) {
+    ChannelBufferOutputStream output = new ChannelBufferOutputStream(
+                                              ChannelBuffers.dynamicBuffer(source.readableBytes() * 2));
+    try {
+      try {
+        GZIPInputStream gzipInput = new GZIPInputStream(new ChannelBufferInputStream(source));
         try {
-          ChannelBufferOutputStream output = new ChannelBufferOutputStream(
-                                                  ChannelBuffers.dynamicBuffer(payload.readableBytes() * 2));
-          try {
-            GZIPInputStream gzipInput = new GZIPInputStream(new ChannelBufferInputStream(payload));
-            try {
-              ByteStreams.copy(gzipInput, output);
-            } finally {
-              gzipInput.close();
-            }
-          } finally {
-            output.close();
-          }
-
-          decodeResponse(output.buffer(), nextOffset);
-
-        } catch (Exception e) {
-          throw Throwables.propagate(e);
+          ByteStreams.copy(gzipInput, output);
+          return output.buffer();
+        } finally {
+          gzipInput.close();
         }
+      } finally {
+        output.close();
+      }
+    } catch (IOException e) {
+      throw Throwables.propagate(e);
+    }
+  }
+
+  private ChannelBuffer snappyUncompress(ChannelBuffer source) {
+    ChannelBufferOutputStream output = new ChannelBufferOutputStream(
+                                              ChannelBuffers.dynamicBuffer(source.readableBytes() * 2));
+    try {
+      try {
+        SnappyInputStream snappyInput = new SnappyInputStream(new ChannelBufferInputStream(source));
+        try {
+          ByteStreams.copy(snappyInput, output);
+          return output.buffer();
+        } finally {
+          snappyInput.close();
+        }
+      } finally {
+        output.close();
+      }
+    } catch (IOException e) {
+      throw Throwables.propagate(e);
     }
   }
 

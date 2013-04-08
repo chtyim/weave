@@ -1,4 +1,4 @@
-package com.continuuity.weave.internal;
+package com.continuuity.weave.internal.yarn;
 
 import com.continuuity.weave.api.Command;
 import com.continuuity.weave.api.LocalFile;
@@ -16,12 +16,14 @@ import com.continuuity.weave.api.WeaveSpecification;
 import com.continuuity.weave.api.logging.LogHandler;
 import com.continuuity.weave.internal.api.DefaultLocalFile;
 import com.continuuity.weave.internal.api.DefaultWeaveRunnableSpecification;
+import com.continuuity.weave.internal.api.DefaultWeaveSpecification;
 import com.continuuity.weave.internal.json.WeaveSpecificationAdapter;
 import com.continuuity.weave.internal.logging.KafkaWeaveRunnable;
 import com.google.common.base.Charsets;
 import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.io.ByteStreams;
@@ -48,7 +50,6 @@ import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.Writer;
 import java.net.URI;
 import java.net.URL;
 import java.util.Collection;
@@ -247,30 +248,33 @@ public final class YarnWeaveRunnerService extends AbstractIdleService implements
                       .put(kafkaName, kafkaRuntimeSpec)
                       .build();
       }
+
+      @Override
+      public List<Order> getOrders() {
+        ImmutableList.Builder<Order> orders = ImmutableList.builder();
+        orders.add(new DefaultWeaveSpecification.DefaultOrder(ImmutableSet.of(kafkaName), Order.Type.STARTED));
+        orders.addAll(weaveSpec.getOrders());
+        return orders.build();
+      }
     };
   }
 
   private Closeable saveWeaveSpec(WeaveSpecification spec, LocalResource resource) throws IOException{
     final File file = File.createTempFile("weaveSpec", ".json");
-    Writer writer = Files.newWriter(file, Charsets.UTF_8);
-    try {
-      WeaveSpecificationAdapter.create().toJson(spec, writer);
+    WeaveSpecificationAdapter.create().toJson(spec, file);
 
-      resource.setResource(ConverterUtils.getYarnUrlFromURI(file.toURI()));
-      resource.setSize(file.length());
-      resource.setTimestamp(file.lastModified());
-      resource.setType(LocalResourceType.FILE);
-      resource.setVisibility(LocalResourceVisibility.APPLICATION);
+    resource.setResource(ConverterUtils.getYarnUrlFromURI(file.toURI()));
+    resource.setSize(file.length());
+    resource.setTimestamp(file.lastModified());
+    resource.setType(LocalResourceType.FILE);
+    resource.setVisibility(LocalResourceVisibility.APPLICATION);
 
-      return new Closeable() {
-        @Override
-        public void close() throws IOException {
-          file.delete();
-        }
-      };
-    } finally {
-      writer.close();
-    }
+    return new Closeable() {
+      @Override
+      public void close() throws IOException {
+        file.delete();
+      }
+    };
   }
 
   private Closeable getLocalResources(WeaveSpecification weaveSpec,

@@ -1,5 +1,6 @@
 package com.continuuity.internal.zk;
 
+import com.continuuity.weave.internal.utils.Threads;
 import com.continuuity.zk.NodeChildren;
 import com.continuuity.zk.NodeData;
 import com.continuuity.zk.OperationFuture;
@@ -12,7 +13,6 @@ import com.google.common.util.concurrent.FutureCallback;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.Service;
-import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import org.apache.zookeeper.AsyncCallback;
 import org.apache.zookeeper.CreateMode;
 import org.apache.zookeeper.KeeperException;
@@ -76,53 +76,75 @@ public final class DefaultZKClientService implements ZKClientService {
                                         @Nullable final byte[] data,
                                         final CreateMode createMode,
                                         final boolean createParent) {
-    final SettableOperationFuture<String> result = SettableOperationFuture.create(path, eventExecutor);
-    getZooKeeper().create(path, data, aclMapper.apply(path), createMode, Callbacks.STRING, result);
+    return doCreate(path, data, createMode, createParent, false);
+  }
+
+  private OperationFuture<String> doCreate(final String path,
+                                        @Nullable final byte[] data,
+                                        final CreateMode createMode,
+                                        final boolean createParent,
+                                        final boolean ignoreNodeExists) {
+    final SettableOperationFuture<String> createFuture = SettableOperationFuture.create(path, eventExecutor);
+    getZooKeeper().create(path, data, aclMapper.apply(path), createMode, Callbacks.STRING, createFuture);
     if (!createParent) {
-      return result;
+      return createFuture;
     }
 
     // If create parent is request, return a different future
-    final SettableOperationFuture<String> createFuture = SettableOperationFuture.create(path, eventExecutor);
+    final SettableOperationFuture<String> result = SettableOperationFuture.create(path, eventExecutor);
     // Watch for changes in the original future
-    Futures.addCallback(result, new FutureCallback<String>() {
+    Futures.addCallback(createFuture, new FutureCallback<String>() {
       @Override
-      public void onSuccess(String result) {
+      public void onSuccess(String path) {
         // Propagate if creation was successful
-        createFuture.set(result);
+        result.set(path);
       }
 
       @Override
       public void onFailure(Throwable t) {
-        // For errors other than NONODE, propagate it
-        if (!(t instanceof KeeperException) || ((KeeperException)t).code() != KeeperException.Code.NONODE) {
-          createFuture.setException(t);
+        // Propagate if there is error
+        if (!(t instanceof KeeperException)) {
+          result.setException(t);
           return;
         }
+        KeeperException.Code code = ((KeeperException) t).code();
+
+        // Node already exists, simply return success
+        if (ignoreNodeExists && code == KeeperException.Code.NODEEXISTS) {
+          // The requested path could be used because it only applies to non-sequential node
+          result.set(path);
+          return;
+        }
+
+        if (code != KeeperException.Code.NONODE) {
+          result.setException(t);
+          return;
+        }
+
         // Create the parent node
         String parentPath = path.substring(0, path.lastIndexOf('/'));
         if (parentPath.isEmpty()) {
-          createFuture.setException(new IllegalStateException("Root node not exists."));
+          result.setException(new IllegalStateException("Root node not exists."));
           return;
         }
         // Watch for parent creation complete
         Futures.addCallback(
-          create(parentPath, null, CreateMode.PERSISTENT, createParent), new FutureCallback<String>() {
-            @Override
-            public void onSuccess(String result) {
-              // Create the requested path again
-              getZooKeeper().create(path, data, aclMapper.apply(path), createMode, Callbacks.STRING, createFuture);
-            }
+          doCreate(parentPath, null, CreateMode.PERSISTENT, createParent, true), new FutureCallback<String>() {
+          @Override
+          public void onSuccess(String parentPath) {
+            // Create the requested path again
+            getZooKeeper().create(path, data, aclMapper.apply(path), createMode, Callbacks.STRING, result);
+          }
 
-            @Override
-            public void onFailure(Throwable t) {
-              createFuture.setException(t);
-            }
-          });
+          @Override
+          public void onFailure(Throwable t) {
+            result.setException(t);
+          }
+        });
       }
     });
 
-    return createFuture;
+    return result;
   }
 
   @Override
@@ -264,10 +286,7 @@ public final class DefaultZKClientService implements ZKClientService {
     protected void doStart() {
       // A single thread executor
       eventExecutor = new ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<Runnable>(),
-                                             new ThreadFactoryBuilder()
-                                               .setDaemon(true)
-                                               .setNameFormat("zk-client-EventThread")
-                                               .build()) {
+                                             Threads.createDaemonThreadFactory("zk-client-EventThread")) {
         @Override
         protected void terminated() {
           super.terminated();

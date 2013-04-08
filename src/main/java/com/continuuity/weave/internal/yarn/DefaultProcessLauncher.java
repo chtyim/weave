@@ -1,4 +1,4 @@
-package com.continuuity.weave.internal;
+package com.continuuity.weave.internal.yarn;
 
 import com.google.common.base.Joiner;
 import com.google.common.base.Throwables;

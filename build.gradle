@@ -38,6 +38,7 @@ dependencies {
   compile libraries.logback_classic
   compile libraries.netty
   compile libraries.slf4j_api
+  compile libraries.snappy
   compile libraries.zookeeper
 
   testCompile libraries.junit

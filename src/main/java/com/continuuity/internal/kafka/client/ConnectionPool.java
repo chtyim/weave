@@ -52,8 +52,11 @@ final class ConnectionPool {
     }
 
     ChannelFuture channelFuture = channelFutures.poll();
-    if (channelFuture != null) {
-      return new SimpleConnectResult(address, channelFuture);
+    while (channelFuture != null) {
+      if (channelFuture.isSuccess() && channelFuture.getChannel().isConnected()) {
+        return new SimpleConnectResult(address, channelFuture);
+      }
+      channelFuture = channelFutures.poll();
     }
 
     channelFuture = bootstrap.connect(address);

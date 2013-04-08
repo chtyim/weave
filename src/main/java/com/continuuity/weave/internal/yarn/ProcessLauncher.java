@@ -1,4 +1,4 @@
-package com.continuuity.weave.internal;
+package com.continuuity.weave.internal.yarn;
 
 import org.apache.hadoop.yarn.api.records.LocalResource;
 

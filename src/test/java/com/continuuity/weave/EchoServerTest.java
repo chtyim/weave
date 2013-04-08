@@ -3,7 +3,7 @@ package com.continuuity.weave;
 import com.continuuity.weave.api.WeaveController;
 import com.continuuity.weave.api.WeaveRunnerService;
 import com.continuuity.weave.api.logging.PrinterLogHandler;
-import com.continuuity.weave.internal.YarnWeaveRunnerService;
+import com.continuuity.weave.internal.yarn.YarnWeaveRunnerService;
 import com.continuuity.weave.zk.InMemoryZKServer;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.yarn.conf.YarnConfiguration;
@@ -11,6 +11,7 @@ import org.apache.hadoop.yarn.server.MiniYARNCluster;
 import org.apache.log4j.Level;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 
 import java.io.PrintWriter;
@@ -21,10 +22,7 @@ import java.util.concurrent.TimeUnit;
  */
 public class EchoServerTest {
 
-  private InMemoryZKServer zkServer;
-  private MiniYARNCluster cluster;
-  private WeaveRunnerService runnerService;
-
+  @Ignore
   @Test
   public void testEchoServer() throws InterruptedException {
     WeaveRunnerService weaveRunner = new YarnWeaveRunnerService(new YarnConfiguration(), zkServer.getConnectionStr());
@@ -67,4 +65,8 @@ public class EchoServerTest {
     cluster.stop();
     zkServer.stopAndWait();
   }
+
+  private InMemoryZKServer zkServer;
+  private MiniYARNCluster cluster;
+  private WeaveRunnerService runnerService;
 }

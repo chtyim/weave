@@ -5,30 +5,55 @@ import com.continuuity.weave.internal.api.DefaultRuntimeSpecification;
 import com.continuuity.weave.internal.api.DefaultWeaveRunnableSpecification;
 import com.continuuity.weave.internal.api.DefaultWeaveSpecification;
 import com.google.common.base.Function;
+import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
+import com.google.common.collect.Sets;
 
 import java.io.File;
 import java.net.URI;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  *
  */
 public interface WeaveSpecification {
 
+  interface Order {
+
+    enum Type {
+      STARTED,
+      COMPLETED
+    }
+
+    Set<String> getNames();
+
+    Type getType();
+  }
+
+
   String getName();
 
   Map<String, RuntimeSpecification> getRunnables();
 
+  /**
+   * Returns a list of runnable names that should be executed in the given order.
+   * @return
+   */
+  List<Order> getOrders();
 
+  /**
+   * Builder for constructing instance of {@link WeaveSpecification}.
+   */
   public static final class Builder {
 
     private String name;
     private Map<String, RuntimeSpecification> runnables = Maps.newHashMap();
+    private List<Order> orders = Lists.newArrayList();
 
     public static NameSetter with() {
       return new Builder().new NameSetter();
@@ -48,31 +73,48 @@ public interface WeaveSpecification {
     }
 
     public interface MoreRunnable {
+      RuntimeSpecificationAdder add(WeaveRunnable runnable);
+
+      RuntimeSpecificationAdder add(WeaveRunnable runnable, ResourceSpecification resourceSpec);
+
       /**
        * Adds a {@link WeaveRunnable} with {@link ResourceSpecification#BASIC} resource specification.
        * @param runnable
        * @return
        */
-      RuntimeSpecificationAdder add(WeaveRunnable runnable);
+      RuntimeSpecificationAdder add(String name, WeaveRunnable runnable);
 
-      RuntimeSpecificationAdder add(WeaveRunnable runnable, ResourceSpecification resourceSpec);
+      RuntimeSpecificationAdder add(String name, WeaveRunnable runnable, ResourceSpecification resourceSpec);
     }
 
     public interface AfterRunnable {
-      WeaveSpecification build();
+      FirstOrder withOrder();
+
+      AfterOrder anyOrder();
     }
 
     public final class RunnableSetter implements MoreRunnable, AfterRunnable {
 
       @Override
       public RuntimeSpecificationAdder add(WeaveRunnable runnable) {
-        return add(runnable, ResourceSpecification.BASIC);
+        return add(runnable.configure().getName(), runnable);
       }
 
       @Override
-      public RuntimeSpecificationAdder add(WeaveRunnable runnable, final ResourceSpecification resourceSpec) {
-        final WeaveRunnableSpecification spec = new DefaultWeaveRunnableSpecification(runnable.getClass().getName(),
-                                                                                      runnable.configure());
+      public RuntimeSpecificationAdder add(WeaveRunnable runnable, ResourceSpecification resourceSpec) {
+        return add(runnable.configure().getName(), runnable, resourceSpec);
+      }
+
+      @Override
+      public RuntimeSpecificationAdder add(String name, WeaveRunnable runnable) {
+        return add(name, runnable, ResourceSpecification.BASIC);
+      }
+
+      @Override
+      public RuntimeSpecificationAdder add(String name, WeaveRunnable runnable,
+                                           final ResourceSpecification resourceSpec) {
+        final WeaveRunnableSpecification spec = new DefaultWeaveRunnableSpecification(
+                                            runnable.getClass().getName(), name, runnable.configure().getArguments());
         return new RuntimeSpecificationAdder(new Function<Collection<LocalFile>, RunnableSetter>() {
           @Override
           public RunnableSetter apply(Collection<LocalFile> files) {
@@ -83,16 +125,24 @@ public interface WeaveSpecification {
       }
 
       @Override
-      public WeaveSpecification build() {
-        return new DefaultWeaveSpecification(name, runnables);
+      public FirstOrder withOrder() {
+        return new OrderSetter();
+      }
+
+      @Override
+      public AfterOrder anyOrder() {
+        return new OrderSetter();
       }
     }
 
+    /**
+     * For setting runtime specific settings.
+     */
     public final class RuntimeSpecificationAdder {
 
       private final Function<Collection<LocalFile>, RunnableSetter> completer;
 
-      public RuntimeSpecificationAdder(Function<Collection<LocalFile>, RunnableSetter> completer) {
+      RuntimeSpecificationAdder(Function<Collection<LocalFile>, RunnableSetter> completer) {
         this.completer = completer;
       }
 
@@ -162,6 +212,68 @@ public interface WeaveSpecification {
 
       public RunnableSetter apply() {
         return completer.apply(files);
+      }
+    }
+
+    public interface FirstOrder {
+      NextOrder begin(String name, String...names);
+    }
+
+    public interface NextOrder extends AfterOrder {
+      NextOrder nextWhenStarted(String name, String...names);
+
+      NextOrder nextWhenCompleted(String name, String...names);
+    }
+
+    public interface AfterOrder {
+      WeaveSpecification build();
+    }
+
+    public final class OrderSetter implements FirstOrder, NextOrder {
+      @Override
+      public NextOrder begin(String name, String... names) {
+        addOrder(Order.Type.STARTED, name, names);
+        return this;
+      }
+
+      @Override
+      public NextOrder nextWhenStarted(String name, String... names) {
+        addOrder(Order.Type.STARTED, name, names);
+        return this;
+      }
+
+      @Override
+      public NextOrder nextWhenCompleted(String name, String... names) {
+        addOrder(Order.Type.COMPLETED, name, names);
+        return this;
+      }
+
+      @Override
+      public WeaveSpecification build() {
+        // Set to track with runnable hasn't been assigned an order.
+        Set<String> runnableNames = Sets.newHashSet(runnables.keySet());
+        for (Order order : orders) {
+          runnableNames.removeAll(order.getNames());
+        }
+
+        // For all unordered runnables, add it to the end of orders list
+        orders.add(new DefaultWeaveSpecification.DefaultOrder(runnableNames, Order.Type.STARTED));
+
+        return new DefaultWeaveSpecification(name, runnables, orders);
+      }
+
+      private void addOrder(final Order.Type type, String name, String...names) {
+        Preconditions.checkArgument(name != null, "Name cannot be null.");
+        Preconditions.checkArgument(runnables.containsKey(name), "Runnable not exists.");
+
+        Set<String> runnableNames = Sets.newHashSet(name);
+        for (String runnableName : names) {
+          Preconditions.checkArgument(name != null, "Name cannot be null.");
+          Preconditions.checkArgument(runnables.containsKey(name), "Runnable not exists.");
+          runnableNames.add(runnableName);
+        }
+
+        orders.add(new DefaultWeaveSpecification.DefaultOrder(runnableNames, type));
       }
     }
 

@@ -1,4 +1,4 @@
-package com.continuuity.weave.internal;
+package com.continuuity.weave.internal.yarn;
 
 import com.continuuity.weave.api.RuntimeSpecification;
 import com.continuuity.weave.api.WeaveSpecification;
@@ -25,6 +25,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
+import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
@@ -51,10 +52,10 @@ public final class ApplicationMasterService extends AbstractExecutionThreadServi
   private volatile Thread runThread;
 
 
-  public ApplicationMasterService(String zkConnectStr, WeaveSpecification weaveSpec, File weaveSpecFile) {
+  public ApplicationMasterService(String zkConnectStr, File weaveSpecFile) throws IOException {
     this.zkConnectStr = zkConnectStr;
-    this.weaveSpec = weaveSpec;
     this.weaveSpecFile = weaveSpecFile;
+    this.weaveSpec = WeaveSpecificationAdapter.create().fromJson(weaveSpecFile);
 
     this.yarnConf = new YarnConfiguration();
     this.launchers = new ConcurrentLinkedQueue<WeaveContainerLauncher>();
@@ -101,6 +102,11 @@ public final class ApplicationMasterService extends AbstractExecutionThreadServi
   @Override
   protected void run() throws Exception {
     runThread = Thread.currentThread();
+
+    // Based on the startup sequence, starts the containers
+//    for (WeaveSpecification.Order order : weaveSpec.getOrders()) {
+//      order.getType()
+//    }
 
     // TODO: We should be able to declare service start sequence
     Queue<RuntimeSpecification> runtimeSpecs = Lists.newLinkedList();

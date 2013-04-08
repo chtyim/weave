@@ -1,10 +1,10 @@
 package com.continuuity.weave;
 
+import com.continuuity.internal.kafka.client.Compression;
+import com.continuuity.internal.kafka.client.SimpleKafkaClient;
 import com.continuuity.kafka.client.FetchedMessage;
 import com.continuuity.kafka.client.KafkaClient;
 import com.continuuity.kafka.client.PreparePublish;
-import com.continuuity.internal.kafka.client.Compression;
-import com.continuuity.internal.kafka.client.SimpleKafkaClient;
 import com.google.common.base.Charsets;
 import com.google.common.util.concurrent.Futures;
 import junit.framework.Assert;
@@ -34,7 +34,7 @@ public class KafkaTest {
     t1.start();
     t2.start();
 
-    Thread t3 = createPublishThread(kafkaClient, topic, Compression.NONE, "More Testing message", 10);
+    Thread t3 = createPublishThread(kafkaClient, topic, Compression.SNAPPY, "Snappy Testing message", 10);
     t2.join();
     t3.start();
 

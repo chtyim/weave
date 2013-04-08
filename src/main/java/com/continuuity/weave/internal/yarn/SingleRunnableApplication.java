@@ -1,4 +1,4 @@
-package com.continuuity.weave.internal;
+package com.continuuity.weave.internal.yarn;
 
 import com.continuuity.weave.api.ResourceSpecification;
 import com.continuuity.weave.api.WeaveApplication;
@@ -24,8 +24,9 @@ public class SingleRunnableApplication implements WeaveApplication {
     WeaveRunnableSpecification runnableSpec = runnable.configure();
     return WeaveSpecification.Builder.with()
       .setName(runnableSpec.getName())
-      .withRunnable().add(runnable, resourceSpec)
+      .withRunnable().add(runnableSpec.getName(), runnable, resourceSpec)
       .noLocalFiles()
+      .anyOrder()
       .build();
   }
 }

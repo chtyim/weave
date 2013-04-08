@@ -3,7 +3,7 @@ package com.continuuity.weave.internal.container;
 import com.continuuity.weave.api.LocalFile;
 import com.continuuity.weave.api.RuntimeSpecification;
 import com.continuuity.weave.api.WeaveSpecification;
-import com.continuuity.weave.internal.ProcessLauncher;
+import com.continuuity.weave.internal.yarn.ProcessLauncher;
 import com.continuuity.weave.internal.utils.YarnUtils;
 import com.google.common.util.concurrent.AbstractIdleService;
 import org.apache.hadoop.yarn.api.records.LocalResource;
