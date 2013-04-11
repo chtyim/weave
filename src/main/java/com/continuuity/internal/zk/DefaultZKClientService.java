@@ -155,7 +155,7 @@ public final class DefaultZKClientService implements ZKClientService {
   @Override
   public OperationFuture<Stat> exists(String path, Watcher watcher) {
     SettableOperationFuture<Stat> result = SettableOperationFuture.create(path, eventExecutor);
-    getZooKeeper().exists(path, wrapWatcher(watcher), Callbacks.STAT, result);
+    getZooKeeper().exists(path, wrapWatcher(watcher), Callbacks.STAT_NONODE, result);
     return result;
   }
 
@@ -362,7 +362,7 @@ public final class DefaultZKClientService implements ZKClientService {
           result.set(name);
           return;
         }
-        result.setException(KeeperException.create(code));
+        result.setException(KeeperException.create(code, result.getRequestPath()));
       }
     };
 
@@ -371,11 +371,27 @@ public final class DefaultZKClientService implements ZKClientService {
       public void processResult(int rc, String path, Object ctx, Stat stat) {
         SettableOperationFuture<Stat> result = (SettableOperationFuture<Stat>)ctx;
         KeeperException.Code code = KeeperException.Code.get(rc);
+        if (code == KeeperException.Code.OK) {
+          result.set(stat);
+          return;
+        }
+        result.setException(KeeperException.create(code, result.getRequestPath()));
+      }
+    };
+
+    /**
+     * A stat callback that treats NONODE as success.
+     */
+    static AsyncCallback.StatCallback STAT_NONODE = new AsyncCallback.StatCallback() {
+      @Override
+      public void processResult(int rc, String path, Object ctx, Stat stat) {
+        SettableOperationFuture<Stat> result = (SettableOperationFuture<Stat>)ctx;
+        KeeperException.Code code = KeeperException.Code.get(rc);
         if (code == KeeperException.Code.OK || code == KeeperException.Code.NONODE) {
           result.set(stat);
           return;
         }
-        result.setException(KeeperException.create(code));
+        result.setException(KeeperException.create(code, result.getRequestPath()));
       }
     };
 
@@ -388,7 +404,7 @@ public final class DefaultZKClientService implements ZKClientService {
           result.set(new BasicNodeChildren(children, stat));
           return;
         }
-        result.setException(KeeperException.create(code));
+        result.setException(KeeperException.create(code, result.getRequestPath()));
       }
     };
 
@@ -401,7 +417,7 @@ public final class DefaultZKClientService implements ZKClientService {
           result.set(new BasicNodeData(data, stat));
           return;
         }
-        result.setException(KeeperException.create(code));
+        result.setException(KeeperException.create(code, result.getRequestPath()));
       }
     };
 
@@ -415,7 +431,7 @@ public final class DefaultZKClientService implements ZKClientService {
           return;
         }
         // Otherwise, it is an error
-        result.setException(KeeperException.create(code));
+        result.setException(KeeperException.create(code, result.getRequestPath()));
       }
     };
   }
