@@ -1,10 +1,12 @@
 package com.continuuity.weave.zk;
 
 import com.continuuity.zk.NodeChildren;
+import com.continuuity.zk.OperationFuture;
 import com.continuuity.zk.RetryStrategies;
 import com.continuuity.zk.ZKClientService;
 import com.continuuity.zk.ZKClientServices;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Lists;
 import com.google.common.io.Files;
 import com.google.common.util.concurrent.FutureCallback;
 import com.google.common.util.concurrent.Futures;
@@ -17,9 +19,11 @@ import org.junit.Test;
 import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.List;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -29,6 +33,31 @@ import java.util.concurrent.atomic.AtomicBoolean;
  *
  */
 public class ZKClientTest {
+
+  @Test
+  public void testChroot() throws Exception {
+    InMemoryZKServer zkServer = InMemoryZKServer.builder().setTickTime(1000).build();
+    zkServer.startAndWait();
+
+    try {
+      ZKClientService client = ZKClientService.Builder.of(zkServer.getConnectionStr() + "/chroot").build();
+      client.startAndWait();
+      try {
+        List<OperationFuture<String>> futures = Lists.newArrayList();
+        futures.add(client.create("/test1/test2", null, CreateMode.PERSISTENT));
+        futures.add(client.create("/test1/test3", null, CreateMode.PERSISTENT));
+        Futures.successfulAsList(futures).get();
+
+        Assert.assertNotNull(client.exists("/test1/test2").get());
+        Assert.assertNotNull(client.exists("/test1/test3").get());
+
+      } finally {
+        client.stopAndWait();
+      }
+    } finally {
+      zkServer.stopAndWait();
+    }
+  }
 
   @Test
   public void testCreateParent() throws ExecutionException, InterruptedException {

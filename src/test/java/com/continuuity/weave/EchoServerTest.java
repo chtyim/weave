@@ -25,7 +25,8 @@ public class EchoServerTest {
   @Ignore
   @Test
   public void testEchoServer() throws InterruptedException {
-    WeaveRunnerService weaveRunner = new YarnWeaveRunnerService(new YarnConfiguration(), zkServer.getConnectionStr());
+    WeaveRunnerService weaveRunner = new YarnWeaveRunnerService(new YarnConfiguration(),
+                                                                zkServer.getConnectionStr() + "/weave");
     weaveRunner.startAndWait();
 
     WeaveController controller = weaveRunner.prepare(new EchoServer(54321))

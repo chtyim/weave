@@ -1,28 +1,19 @@
-package com.continuuity.internal.zk;
+package com.continuuity.zk;
 
-import com.continuuity.zk.NodeChildren;
-import com.continuuity.zk.NodeData;
-import com.continuuity.zk.OperationFuture;
-import com.continuuity.zk.ZKClientService;
-import com.google.common.base.Supplier;
-import com.google.common.util.concurrent.Futures;
-import com.google.common.util.concurrent.ListenableFuture;
 import org.apache.zookeeper.CreateMode;
 import org.apache.zookeeper.Watcher;
-import org.apache.zookeeper.ZooKeeper;
 import org.apache.zookeeper.data.Stat;
 
 import javax.annotation.Nullable;
-import java.util.concurrent.Executor;
 
 /**
  *
  */
-abstract class ForwardingZKClientService implements ZKClientService {
+public abstract class ForwardingZKClient implements ZKClient {
 
-  private final ZKClientService delegate;
+  private final ZKClient delegate;
 
-  protected ForwardingZKClientService(ZKClientService delegate) {
+  protected ForwardingZKClient(ZKClient delegate) {
     this.delegate = delegate;
   }
 
@@ -85,45 +76,5 @@ abstract class ForwardingZKClientService implements ZKClientService {
   @Override
   public OperationFuture<String> delete(String deletePath, int version) {
     return delegate.delete(deletePath, version);
-  }
-
-  @Override
-  public Supplier<ZooKeeper> getZooKeeperSupplier() {
-    return delegate.getZooKeeperSupplier();
-  }
-
-  @Override
-  public ListenableFuture<State> start() {
-    return delegate.start();
-  }
-
-  @Override
-  public State startAndWait() {
-    return Futures.getUnchecked(start());
-  }
-
-  @Override
-  public boolean isRunning() {
-    return delegate.isRunning();
-  }
-
-  @Override
-  public State state() {
-    return delegate.state();
-  }
-
-  @Override
-  public ListenableFuture<State> stop() {
-    return delegate.stop();
-  }
-
-  @Override
-  public State stopAndWait() {
-    return Futures.getUnchecked(stop());
-  }
-
-  @Override
-  public void addListener(Listener listener, Executor executor) {
-    delegate.addListener(listener, executor);
   }
 }

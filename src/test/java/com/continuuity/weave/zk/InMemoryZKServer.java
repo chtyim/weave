@@ -83,7 +83,8 @@ public final class InMemoryZKServer implements Service {
 
   private InetSocketAddress getAddress(int port) {
     try {
-      return new InetSocketAddress(InetAddress.getByAddress(new byte[] {127, 0, 0, 1}), port < 0 ? 0 : port);
+//      return new InetSocketAddress(InetAddress.getByAddress(new byte[] {127, 0, 0, 1}), port < 0 ? 0 : port);
+      return new InetSocketAddress(InetAddress.getLocalHost(), port < 0 ? 0 : port);
     } catch (UnknownHostException e) {
       throw Throwables.propagate(e);
     }

@@ -102,30 +102,17 @@ public final class DefaultZKClientService implements ZKClientService {
 
       @Override
       public void onFailure(Throwable t) {
-        // Propagate if there is error
-        if (!(t instanceof KeeperException)) {
-          result.setException(t);
+        if (updateFailureResult(t, result, path)) {
           return;
         }
-        KeeperException.Code code = ((KeeperException) t).code();
-
-        // Node already exists, simply return success
-        if (ignoreNodeExists && code == KeeperException.Code.NODEEXISTS) {
-          // The requested path could be used because it only applies to non-sequential node
-          result.set(path);
-          return;
-        }
-
-        if (code != KeeperException.Code.NONODE) {
-          result.setException(t);
-          return;
-        }
-
         // Create the parent node
         String parentPath = path.substring(0, path.lastIndexOf('/'));
         if (parentPath.isEmpty()) {
-          result.setException(new IllegalStateException("Root node not exists."));
-          return;
+          if (path.equals("/")) {
+            result.setException(new IllegalStateException("Root node not exists."));
+            return;
+          }
+          parentPath = "/";
         }
         // Watch for parent creation complete
         Futures.addCallback(
@@ -133,7 +120,18 @@ public final class DefaultZKClientService implements ZKClientService {
           @Override
           public void onSuccess(String parentPath) {
             // Create the requested path again
-            getZooKeeper().create(path, data, aclMapper.apply(path), createMode, Callbacks.STRING, result);
+            Futures.addCallback(doCreate(path, data, createMode, false, ignoreNodeExists), new FutureCallback<String>() {
+              @Override
+              public void onSuccess(String pathResult) {
+                result.set(pathResult);
+              }
+
+              @Override
+              public void onFailure(Throwable t) {
+                // Node already exists, simply return success
+                updateFailureResult(t, result, path);
+              }
+            });
           }
 
           @Override
@@ -141,6 +139,26 @@ public final class DefaultZKClientService implements ZKClientService {
             result.setException(t);
           }
         });
+      }
+
+      private boolean updateFailureResult(Throwable t, SettableOperationFuture<String> result, String path) {
+        // Propagate if there is error
+        if (!(t instanceof KeeperException)) {
+          result.setException(t);
+          return true;
+        }
+        KeeperException.Code code = ((KeeperException) t).code();
+        // Node already exists, simply return success
+        if (ignoreNodeExists && code == KeeperException.Code.NODEEXISTS) {
+          // The requested path could be used because it only applies to non-sequential node
+          result.set(path);
+          return false;
+        }
+        if (code != KeeperException.Code.NONODE) {
+          result.setException(t);
+          return true;
+        }
+        return false;
       }
     });
 
@@ -359,7 +377,7 @@ public final class DefaultZKClientService implements ZKClientService {
         SettableOperationFuture<String> result = (SettableOperationFuture<String>)ctx;
         KeeperException.Code code = KeeperException.Code.get(rc);
         if (code == KeeperException.Code.OK) {
-          result.set(name);
+          result.set((name == null || name.isEmpty()) ? path : name);
           return;
         }
         result.setException(KeeperException.create(code, result.getRequestPath()));

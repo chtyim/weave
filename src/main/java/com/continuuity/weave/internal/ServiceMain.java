@@ -9,7 +9,7 @@ import org.slf4j.LoggerFactory;
 import java.util.concurrent.ExecutionException;
 
 /**
- * Class for the static main method that starts a service.
+ * Class for main method that starts a service.
  */
 public abstract class ServiceMain {
 

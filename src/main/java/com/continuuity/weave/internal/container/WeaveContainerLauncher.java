@@ -22,26 +22,26 @@ public class WeaveContainerLauncher extends AbstractIdleService {
 
   private final WeaveSpecification weaveSpec;
   private final File weaveSpecFile;
-  private final String runtimeName;
+  private final String runnableName;
   private final ProcessLauncher processLauncher;
   private final String zkConnectStr;
   private ProcessLauncher.ProcessController controller;
 
   public WeaveContainerLauncher(WeaveSpecification weaveSpec,
                                 File weaveSpecFile,
-                                String runtimeName,
+                                String runnableName,
                                 ProcessLauncher processLauncher,
                                 String zkConnectStr) {
     this.weaveSpec = weaveSpec;
     this.weaveSpecFile = weaveSpecFile;
-    this.runtimeName = runtimeName;
+    this.runnableName = runnableName;
     this.processLauncher = processLauncher;
     this.zkConnectStr = zkConnectStr;
   }
 
   @Override
   protected void startUp() throws Exception {
-    RuntimeSpecification runtimeSpec = weaveSpec.getRunnables().get(runtimeName);
+    RuntimeSpecification runtimeSpec = weaveSpec.getRunnables().get(runnableName);
 
     ProcessLauncher.PrepareLaunchContext.AfterUser afterUser = processLauncher.prepareLaunch()
       .setUser(System.getProperty("user.name"));
@@ -50,7 +50,7 @@ public class WeaveContainerLauncher extends AbstractIdleService {
       afterUser.withResources().add("weave.spec", YarnUtils.createLocalResource(LocalResourceType.FILE, weaveSpecFile));
 
     for (LocalFile localFile : runtimeSpec.getLocalFiles()) {
-      File file = new File(runtimeName + "." + localFile.getName());
+      File file = new File(runnableName + "." + localFile.getName());
       LocalResource localRsc = setLocalResourceType(localFile,
                                                     YarnUtils.createLocalResource(LocalResourceType.FILE, file));
       LOG.info("Adding resources: " + file + " " + localRsc);
@@ -62,9 +62,9 @@ public class WeaveContainerLauncher extends AbstractIdleService {
            "com.continuuity.weave.internal.container.WeaveContainerMain",
            zkConnectStr,
            "weave.spec",
-           runtimeName)
-      .redirectOutput("/tmp/container." + runtimeName + ".out")
-      .redirectError("/tmp/container." + runtimeName + ".err")
+           runnableName)
+      .redirectOutput("/tmp/container." + runnableName + ".out")
+      .redirectError("/tmp/container." + runnableName + ".err")
       .launch();
   }
 

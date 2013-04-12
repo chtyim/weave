@@ -1,6 +1,7 @@
 package com.continuuity.internal.zk;
 
 import com.continuuity.internal.zk.RewatchOnExpireWatcher.ActionType;
+import com.continuuity.zk.ForwardingZKClientService;
 import com.continuuity.zk.NodeChildren;
 import com.continuuity.zk.NodeData;
 import com.continuuity.zk.OperationFuture;
