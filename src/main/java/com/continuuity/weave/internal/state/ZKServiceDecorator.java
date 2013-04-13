@@ -135,11 +135,12 @@ public final class ZKServiceDecorator extends AbstractService {
         LOG.info("Connection state changed " + previous + " => " + current);
 
         if (current == Event.KeeperState.SyncConnected && (previous == null || previous == Event.KeeperState.Expired)) {
-          LOG.info("Create live node for " + id);
+          String liveNode = "/instances/" + id;
+          LOG.info("Create live node " + liveNode);
 
           JsonObject content = new JsonObject();
           content.add("data", liveNodeData.get());
-          listenFailure(zkClient.create("/instances/" + id, encode(content), CreateMode.EPHEMERAL));
+          listenFailure(zkClient.create(liveNode, encode(content), CreateMode.EPHEMERAL));
         }
       }
     };

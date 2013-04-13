@@ -18,7 +18,8 @@ public final class RunIds {
   private static final AtomicLong lastTimestamp = new AtomicLong();
 
   public static RunId generate() {
-    return new RunIdImpl(generateUUIDFromCurrentTime().toString());
+//    return new RunIdImpl(generateUUIDFromCurrentTime().toString());
+    return new RunIdImpl(UUID.randomUUID().toString());
   }
 
   private static UUID generateUUIDFromCurrentTime() {

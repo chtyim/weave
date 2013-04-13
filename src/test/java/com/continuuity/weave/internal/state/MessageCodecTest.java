@@ -27,6 +27,11 @@ public class MessageCodecTest {
       }
 
       @Override
+      public String getRunnableName() {
+        return null;
+      }
+
+      @Override
       public Command getCommand() {
         return new Command() {
           @Override
@@ -44,6 +49,7 @@ public class MessageCodecTest {
 
     Assert.assertEquals("message-id", message.getId());
     Assert.assertEquals(Message.Scope.APPLICATION, message.getScope());
+    Assert.assertNull(message.getRunnableName());
     Assert.assertEquals("stop", message.getCommand().getCommand());
     Assert.assertEquals(ImmutableMap.of("timeout", "1", "timeoutUnit", "SECONDS"), message.getCommand().getOptions());
   }

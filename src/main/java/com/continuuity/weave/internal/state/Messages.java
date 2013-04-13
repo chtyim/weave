@@ -55,8 +55,10 @@ final class Messages {
       JsonObject jsonObj = json.getAsJsonObject();
       final String id = jsonObj.get("id").getAsString();
       final Message.Scope scope = Message.Scope.valueOf(jsonObj.get("scope").getAsString());
+      JsonElement name = jsonObj.get("runnableName");
+      final String runnableName = (name == null || name.isJsonNull()) ? null :name.getAsString();
 
-      JsonObject commandObj = jsonObj.get("command").getAsJsonObject();
+        JsonObject commandObj = jsonObj.get("command").getAsJsonObject();
       final String commandName = commandObj.get("command").getAsString();
       final Map<String, String> options = ImmutableMap.copyOf(
                           context.<Map<String, String>>deserialize(commandObj.get("options"), OPTIONS_TYPE));
@@ -83,6 +85,11 @@ final class Messages {
         }
 
         @Override
+        public String getRunnableName() {
+          return runnableName;
+        }
+
+        @Override
         public Command getCommand() {
           return command;
         }
@@ -94,6 +101,7 @@ final class Messages {
       JsonObject jsonObj = new JsonObject();
       jsonObj.addProperty("id", message.getId());
       jsonObj.addProperty("scope", message.getScope().name());
+      jsonObj.addProperty("runnableName", message.getRunnableName());
 
       Command command = message.getCommand();
       JsonObject commandObj = new JsonObject();

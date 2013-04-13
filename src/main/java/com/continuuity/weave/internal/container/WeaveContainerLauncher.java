@@ -3,13 +3,11 @@ package com.continuuity.weave.internal.container;
 import com.continuuity.weave.api.LocalFile;
 import com.continuuity.weave.api.RuntimeSpecification;
 import com.continuuity.weave.api.WeaveSpecification;
-import com.continuuity.weave.internal.yarn.ProcessLauncher;
 import com.continuuity.weave.internal.utils.YarnUtils;
+import com.continuuity.weave.internal.yarn.ProcessLauncher;
 import com.google.common.util.concurrent.AbstractIdleService;
 import org.apache.hadoop.yarn.api.records.LocalResource;
 import org.apache.hadoop.yarn.api.records.LocalResourceType;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.io.File;
 
@@ -17,8 +15,6 @@ import java.io.File;
  *
  */
 public class WeaveContainerLauncher extends AbstractIdleService {
-
-  private static final Logger LOG = LoggerFactory.getLogger(WeaveContainerLauncher.class);
 
   private final WeaveSpecification weaveSpec;
   private final File weaveSpecFile;
@@ -53,7 +49,6 @@ public class WeaveContainerLauncher extends AbstractIdleService {
       File file = new File(runnableName + "." + localFile.getName());
       LocalResource localRsc = setLocalResourceType(localFile,
                                                     YarnUtils.createLocalResource(LocalResourceType.FILE, file));
-      LOG.info("Adding resources: " + file + " " + localRsc);
       moreResources = moreResources.add(localFile.getName(), localRsc);
     }
 

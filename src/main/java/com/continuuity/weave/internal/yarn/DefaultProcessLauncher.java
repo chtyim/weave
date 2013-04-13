@@ -126,8 +126,9 @@ final class DefaultProcessLauncher implements ProcessLauncher {
 
         // TODO: Hack now
         launchContext.setEnvironment(ImmutableMap.of("CLASSPATH", System.getProperty("java.class.path"),
-                                                     "CONTAINER_HOST", container.getNodeId().getHost(),
-                                                     "CONTAINER_PORT", Integer.toString(container.getNodeId().getPort()
+                                                     "YARN_CONTAINER_ID", container.getId().toString(),
+                                                     "YARN_CONTAINER_HOST", container.getNodeId().getHost(),
+                                                     "YARN_CONTAINER_PORT", Integer.toString(container.getNodeId().getPort()
         )));
 
         StartContainerRequest startRequest = Records.newRecord(StartContainerRequest.class);

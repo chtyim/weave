@@ -17,5 +17,10 @@ public interface Message {
 
   Scope getScope();
 
+  /**
+   * @return the name of the target runnable if scope is {@link Scope#RUNNABLE} or {@code null} otherwise.
+   */
+  String getRunnableName();
+
   Command getCommand();
 }

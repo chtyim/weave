@@ -27,9 +27,7 @@ public interface WeaveRunnableSpecification {
 
     public final class NameSetter {
       public AfterName setName(String name) {
-
-        // TODO: Hack
-        Builder.this.name = name + System.currentTimeMillis();
+        Builder.this.name = name;
         return new AfterName();
       }
     }

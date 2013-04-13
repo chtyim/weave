@@ -40,6 +40,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
@@ -60,6 +61,7 @@ public final class ApplicationMasterService implements Service {
   private final WeaveSpecification weaveSpec;
   private final File weaveSpecFile;
   private final YarnConfiguration yarnConf;
+  private final String masterContainerId;
   private final AMRMClient amrmClient;
   private final Queue<WeaveContainerLauncher> launchers;
   private final ZKServiceDecorator serviceDelegate;
@@ -81,10 +83,10 @@ public final class ApplicationMasterService implements Service {
                                                   createLiveNodeDataSupplier(), new ServiceDelegate());
 
     // Get the container ID and convert it to ApplicationAttemptId
-    String containerIdString = System.getenv().get(ApplicationConstants.AM_CONTAINER_ID_ENV);
-    Preconditions.checkArgument(containerIdString != null,
+    masterContainerId = System.getenv().get(ApplicationConstants.AM_CONTAINER_ID_ENV);
+    Preconditions.checkArgument(masterContainerId != null,
                                 "Missing %s from environment", ApplicationConstants.AM_CONTAINER_ID_ENV);
-    amrmClient = new AMRMClientImpl(ConverterUtils.toContainerId(containerIdString).getApplicationAttemptId());
+    amrmClient = new AMRMClientImpl(ConverterUtils.toContainerId(masterContainerId).getApplicationAttemptId());
   }
 
   private Supplier<? extends JsonElement> createLiveNodeDataSupplier() {
@@ -92,7 +94,7 @@ public final class ApplicationMasterService implements Service {
       @Override
       public JsonElement get() {
         JsonObject jsonObj = new JsonObject();
-//        jsonObj.addProperty("containerId");
+        jsonObj.addProperty("containerId", masterContainerId);
         return jsonObj;
       }
     };
@@ -109,6 +111,9 @@ public final class ApplicationMasterService implements Service {
     RegisterApplicationMasterResponse response = amrmClient.registerApplicationMaster("", 0, null);
     maxCapability = response.getMaximumResourceCapability();
     minCapability = response.getMinimumResourceCapability();
+
+    LOG.info("Maximum resource capability: " + maxCapability);
+    LOG.info("Minimum resource capability: " + minCapability);
 
     serviceDelegate.getZKClient().create("/" + runId + "/runnables", null, CreateMode.PERSISTENT).get();
   }
@@ -130,7 +135,7 @@ public final class ApplicationMasterService implements Service {
 //    }
 
     // TODO: We should be able to declare service start sequence
-    Queue<RuntimeSpecification> runtimeSpecs = Lists.newLinkedList();
+    final List<RunnableContainerRequest> runtimeSpecs = Lists.newLinkedList();
 
     // Simply goes through the spec and create container requests
     for (Map.Entry<String,RuntimeSpecification> entry : weaveSpec.getRunnables().entrySet()) {
@@ -145,29 +150,51 @@ public final class ApplicationMasterService implements Service {
       AMRMClient.ContainerRequest request = new AMRMClient.ContainerRequest(capability, null, null, priority, 1);
       amrmClient.addContainerRequest(request);
 
-      runtimeSpecs.add(entry.getValue());
+      runtimeSpecs.add(new RunnableContainerRequest(entry.getValue().getName(), capability));
     }
 
     while (isRunning()) {
       AllocateResponse allocateResponse = amrmClient.allocate(0.0f);
+      allocateResponse.getAMResponse().getResponseId();
       AMResponse amResponse = allocateResponse.getAMResponse();
       List<Container> containers = amResponse.getAllocatedContainers();
 
-      LOG.info("Containers size: " + containers.size());
-      LOG.info("Containers: " + containers);
+      for (final Container container : containers) {
+        LOG.info("Container provisioned: " + container);
 
-      // TODO: Match the resource capability.
-      for (Container container : containers) {
-        RuntimeSpecification runtimeSpec = runtimeSpecs.poll();
-        DefaultProcessLauncher processLauncher = new DefaultProcessLauncher(container, yarnRPC, yarnConf);
-        WeaveContainerLauncher launcher = new WeaveContainerLauncher(weaveSpec, weaveSpecFile, runtimeSpec.getName(),
-                                                                     processLauncher, zkConnectStr);
-        launcher.start();
-        launchers.add(launcher);
+        // For each container provisioned, find the request that has the resource capability matched.
+        boolean executed = false;
+        Iterator<RunnableContainerRequest> requestItor = runtimeSpecs.iterator();
+        while (requestItor.hasNext()) {
+          RunnableContainerRequest request = requestItor.next();
+          LOG.info("Requested capability: " + request.getCapability());
+          // TODO: Find way to tie request to resource
+//          if (!container.getResource().equals(request.getCapability())) {
+//            continue;
+//          }
+          requestItor.remove();
+          DefaultProcessLauncher processLauncher = new DefaultProcessLauncher(container, yarnRPC, yarnConf);
+          WeaveContainerLauncher launcher = new WeaveContainerLauncher(weaveSpec, weaveSpecFile, request.getName(),
+                                                                       processLauncher,
+                                                                       getRunnableZKConnectStr(request.getName()));
+          launcher.start();
+          launchers.add(launcher);
+          executed = true;
+          break;
+        }
+
+        if (!executed) {
+          LOG.info("Nothing to run in container, releasing it: " + container);
+          amrmClient.releaseAssignedContainer(container.getId());
+        }
       }
 
       TimeUnit.SECONDS.sleep(1);
     }
+  }
+
+  private String getRunnableZKConnectStr(String runnableName) {
+    return String.format("%s/%s/runnables/%s", zkConnectStr, runId, runnableName);
   }
 
   private ListenableFuture<String> processMessage(Message message) {
@@ -225,7 +252,6 @@ public final class ApplicationMasterService implements Service {
     serviceDelegate.addListener(listener, executor);
   }
 
-
   private final class ServiceDelegate extends AbstractExecutionThreadService implements MessageCallback {
 
     private volatile Thread runThread;
@@ -262,6 +288,24 @@ public final class ApplicationMasterService implements Service {
     @Override
     public ListenableFuture<String> onReceived(Message message) {
       return processMessage(message);
+    }
+  }
+
+  private static final class RunnableContainerRequest {
+    private final String name;
+    private final Resource capability;
+
+    private RunnableContainerRequest(String name, Resource capability) {
+      this.name = name;
+      this.capability = capability;
+    }
+
+    private String getName() {
+      return name;
+    }
+
+    private Resource getCapability() {
+      return capability;
     }
   }
 }

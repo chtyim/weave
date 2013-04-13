@@ -201,8 +201,10 @@ public final class YarnWeaveRunnerService extends AbstractIdleService implements
     yarnClient.stop();
   }
 
+  // Add the kafka runnable.
+  // TODO: It is a bit hacky to just add it in here
   private WeaveSpecification addKafka(final WeaveSpecification weaveSpec) {
-    final String kafkaName = "kafka" + System.currentTimeMillis();
+    final String kafkaName = "kafka";
 
     return new WeaveSpecification() {
       @Override
@@ -228,7 +230,8 @@ public final class YarnWeaveRunnerService extends AbstractIdleService implements
 
           @Override
           public ResourceSpecification getResourceSpecification() {
-            return ResourceSpecification.BASIC;
+            return ResourceSpecification.Builder.with()
+              .setCores(1).setMemory(1, ResourceSpecification.SizeUnit.GIGA).build();
           }
 
           @Override

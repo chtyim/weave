@@ -72,10 +72,8 @@ public final class DefaultZKClientService implements ZKClientService {
   }
 
   @Override
-  public OperationFuture<String> create(final String path,
-                                        @Nullable final byte[] data,
-                                        final CreateMode createMode,
-                                        final boolean createParent) {
+  public OperationFuture<String> create(String path, @Nullable byte[] data,
+                                        CreateMode createMode, boolean createParent) {
     return doCreate(path, data, createMode, createParent, false);
   }
 
@@ -102,17 +100,15 @@ public final class DefaultZKClientService implements ZKClientService {
 
       @Override
       public void onFailure(Throwable t) {
-        if (updateFailureResult(t, result, path)) {
+        // See if the failure can be handled
+        if (updateFailureResult(t, result, path, ignoreNodeExists)) {
           return;
         }
         // Create the parent node
-        String parentPath = path.substring(0, path.lastIndexOf('/'));
+        String parentPath = getParent(path);
         if (parentPath.isEmpty()) {
-          if (path.equals("/")) {
-            result.setException(new IllegalStateException("Root node not exists."));
-            return;
-          }
-          parentPath = "/";
+          result.setException(t);
+          return;
         }
         // Watch for parent creation complete
         Futures.addCallback(
@@ -128,8 +124,8 @@ public final class DefaultZKClientService implements ZKClientService {
 
               @Override
               public void onFailure(Throwable t) {
-                // Node already exists, simply return success
-                updateFailureResult(t, result, path);
+                // handle the failure
+                updateFailureResult(t, result, path, ignoreNodeExists);
               }
             });
           }
@@ -141,14 +137,22 @@ public final class DefaultZKClientService implements ZKClientService {
         });
       }
 
-      private boolean updateFailureResult(Throwable t, SettableOperationFuture<String> result, String path) {
+      /**
+       * Updates the result future based on the given {@link Throwable}.
+       * @param t Cause of the failure
+       * @param result Future to be updated
+       * @param path Request path for the operation
+       * @return {@code true} if it is a failure, {@code false} otherwise.
+       */
+      private boolean updateFailureResult(Throwable t, SettableOperationFuture<String> result,
+                                          String path, boolean ignoreNodeExists) {
         // Propagate if there is error
         if (!(t instanceof KeeperException)) {
           result.setException(t);
           return true;
         }
         KeeperException.Code code = ((KeeperException) t).code();
-        // Node already exists, simply return success
+        // Node already exists, simply return success if it allows for ignoring node exists (for parent node creation).
         if (ignoreNodeExists && code == KeeperException.Code.NODEEXISTS) {
           // The requested path could be used because it only applies to non-sequential node
           result.set(path);
@@ -159,6 +163,16 @@ public final class DefaultZKClientService implements ZKClientService {
           return true;
         }
         return false;
+      }
+
+      /**
+       * Gets the parent of the given path.
+       * @param path Path for computing its parent
+       * @return Parent of the given path, or empty string if the given path is the root path already.
+       */
+      private String getParent(String path) {
+        String parentPath = path.substring(0, path.lastIndexOf('/'));
+        return (parentPath.isEmpty() && !"/".equals(path)) ? "/" : parentPath;
       }
     });
 
@@ -271,12 +285,20 @@ public final class DefaultZKClientService implements ZKClientService {
     serviceDelegate.addListener(listener, executor);
   }
 
+  /**
+   * @return Current {@link ZooKeeper} client.
+   */
   private ZooKeeper getZooKeeper() {
     ZooKeeper zk = zooKeeper.get();
     Preconditions.checkArgument(zk != null, "Not connected to zooKeeper.");
     return zk;
   }
 
+  /**
+   * Wraps the given watcher to be called from the event executor.
+   * @param watcher Watcher to be wrapped
+   * @return The wrapped Watcher
+   */
   private Watcher wrapWatcher(final Watcher watcher) {
     if (watcher == null) {
       return null;
@@ -344,7 +366,7 @@ public final class DefaultZKClientService implements ZKClientService {
         if (event.getState() == Event.KeeperState.Expired) {
           LOG.info("ZooKeeper session expired: " + zkStr);
 
-          // When connection expired, simple reconnect again
+          // When connection expired, simply reconnect again
           Thread t = new Thread(new Runnable() {
             @Override
             public void run() {
