@@ -56,8 +56,7 @@ public interface WeaveSpecification {
   Map<String, RuntimeSpecification> getRunnables();
 
   /**
-   * Returns a list of runnable names that should be executed in the given order.
-   * @return
+   * @return Returns a list of runnable names that should be executed in the given order.
    */
   List<Order> getOrders();
 
@@ -94,8 +93,9 @@ public interface WeaveSpecification {
 
       /**
        * Adds a {@link WeaveRunnable} with {@link ResourceSpecification#BASIC} resource specification.
-       * @param runnable
-       * @return
+       * @param name Name of runnable
+       * @param runnable {@link WeaveRunnable} to be run
+       * @return instance of {@link RuntimeSpecificationAdder}
        */
       RuntimeSpecificationAdder add(String name, WeaveRunnable runnable);
 
