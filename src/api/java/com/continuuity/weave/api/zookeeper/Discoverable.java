@@ -14,7 +14,7 @@
  *   the License.
  */
 
-package com.continuuity.weave.zookeeper;
+package com.continuuity.weave.api.zookeeper;
 
 import java.net.InetSocketAddress;
 

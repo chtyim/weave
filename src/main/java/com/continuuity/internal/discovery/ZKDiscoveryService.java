@@ -15,10 +15,10 @@
  */
 package com.continuuity.internal.discovery;
 
-import com.continuuity.weave.zookeeper.Cancellable;
-import com.continuuity.weave.zookeeper.Discoverable;
-import com.continuuity.weave.zookeeper.DiscoveryService;
-import com.continuuity.weave.zookeeper.DiscoveryServiceClient;
+import com.continuuity.weave.api.zookeeper.Cancellable;
+import com.continuuity.weave.api.zookeeper.Discoverable;
+import com.continuuity.weave.api.zookeeper.DiscoveryService;
+import com.continuuity.weave.api.zookeeper.DiscoveryServiceClient;
 import com.continuuity.zk.NodeChildren;
 import com.continuuity.zk.NodeData;
 import com.continuuity.zk.OperationFuture;
@@ -49,11 +49,9 @@ import org.apache.zookeeper.Watcher;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.File;
 import java.lang.reflect.Type;
 import java.net.InetSocketAddress;
 import java.util.Iterator;
-import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicReference;
 

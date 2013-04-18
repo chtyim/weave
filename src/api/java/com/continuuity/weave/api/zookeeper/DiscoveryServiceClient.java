@@ -13,7 +13,7 @@
  *   License for the specific language governing permissions and limitations under
  *   the License.
  */
-package com.continuuity.weave.zookeeper;
+package com.continuuity.weave.api.zookeeper;
 
 import com.google.common.util.concurrent.Service;
 

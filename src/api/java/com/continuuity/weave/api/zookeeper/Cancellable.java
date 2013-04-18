@@ -13,20 +13,15 @@
  *   License for the specific language governing permissions and limitations under
  *   the License.
  */
-package com.continuuity.weave.zookeeper;
 
-import com.google.common.util.concurrent.Service;
+package com.continuuity.weave.api.zookeeper;
 
 /**
- * DiscoveryService defines interface for registering {@link Discoverable}
+ * Something, usually a task, that can be cancelled. Cancellation is performed by the cancel method.
  */
-public interface DiscoveryService extends Service {
-
+public interface Cancellable {
   /**
-   * Registers a {@link Discoverable} service.
-   * @param discoverable Information of the service provider that could be discovered.
-   * @return A {@link Cancellable} for un-registration.
+   * Attempts to cancel execution of this task.
    */
-  Cancellable register(Discoverable discoverable);
+  void cancel();
 }
-

@@ -16,10 +16,10 @@
 
 package com.continuuity.internal.discovery;
 
-import com.continuuity.weave.zookeeper.Cancellable;
-import com.continuuity.weave.zookeeper.Discoverable;
-import com.continuuity.weave.zookeeper.DiscoveryService;
-import com.continuuity.weave.zookeeper.DiscoveryServiceClient;
+import com.continuuity.weave.api.zookeeper.Cancellable;
+import com.continuuity.weave.api.zookeeper.Discoverable;
+import com.continuuity.weave.api.zookeeper.DiscoveryService;
+import com.continuuity.weave.api.zookeeper.DiscoveryServiceClient;
 import com.google.common.collect.Iterables;
 import junit.framework.Assert;
 import org.junit.Test;
