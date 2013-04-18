@@ -47,33 +47,73 @@ import java.net.InetSocketAddress;
 import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Zookeeper implementation of {@link DiscoveryService} and {@link DiscoveryServiceClient}.
+ * <p>
+ *   Discoverable services are registered within Zookeeper under the namespace 'discoverable' by default.
+ *   If you would like to change the namespace under which the services are registered then you can pass
+ *   in the namespace during construction of {@link ZKDiscoveryService}.
+ * </p>
+ *
+ * <p>
+ *   Following is a simple example of how {@link ZKDiscoveryService} can be used for registering services
+ *   and also for discovering the registered services.
+ *   <blockquote>
+ *    <pre>
+ *      DiscoveryService service = new ZKDiscoveryService(zkQuorum);
+ *      service.startAndWait();
+ *      service.register(new Discoverable() {
+ *        @Override
+ *        public String getName() {
+ *          return 'service-name';
+ *        }
+ *
+ *        @Override
+ *        public InetSocketAddress getSocketAddress() {
+ *          return new InetSocketAddress(hostname, port);
+ *        }
+ *      });
+ *      ...
+ *      ...
+ *      Iterable<Discoverable> services = service.discovery("service-name");
+ *      ...
+ *    </pre>
+ *   </blockquote>
+ * </p>
  */
 @Singleton
 public class ZKDiscoveryService extends AbstractIdleService implements DiscoveryService, DiscoveryServiceClient {
-  private static final String DISCOVERABLE_BASE = "/discoverable";
-  private Multimap<String, Discoverable> services;
-  private ZKClientService client;
-  private final Lock lock = new ReentrantLock();
-  private final String discoverableBase;
+  private static final String NAMESPACE = "/discoverable";
+  private final AtomicReference<Multimap<String, Discoverable>> services;
+  private final ZKClientService client;
+  private final String namespace;
 
+  /**
+   * Constructs ZKDiscoveryService using the provided zookeeper quorum for storing service registry.
+   * @param zkConnectionString of zookeeper quorum
+   */
   public ZKDiscoveryService(String zkConnectionString) {
-    this(zkConnectionString, DISCOVERABLE_BASE);
+    this(zkConnectionString, NAMESPACE);
   }
 
-  public ZKDiscoveryService(String zkConnectionString, String discoverableBase) {
+  /**
+   * Constructs ZKDiscoveryService using the provided zookeeper quorum for storing service registry under namepsace.
+   * @param zkConnectionString of zookeeper quorum
+   * @param namespace under which the service registered would be stored in zookeeper.
+   */
+  public ZKDiscoveryService(String zkConnectionString, String namespace) {
     client = ZKClientService.Builder.of(zkConnectionString).build();
-    this.discoverableBase = discoverableBase;
+    this.namespace = namespace;
+    services = new AtomicReference<Multimap<String, Discoverable>>();
   }
 
   @Override
   protected void startUp() throws Exception {
-    services = HashMultimap.create();
     client.startAndWait();
+    Multimap<String, Discoverable> mappings = HashMultimap.create();
+    services.set(mappings);
   }
 
   @Override
@@ -96,34 +136,31 @@ public class ZKDiscoveryService extends AbstractIdleService implements Discovery
   @Override
   public Cancellable register(final Discoverable discoverable) {
     Preconditions.checkState(isRunning(), "Service is not running");
-    lock.lock();
+
+    final Discoverable wrapper = new DiscoverableWrapper(discoverable);
+    byte[] discoverableBytes = encode(wrapper);
+
+    // Path <discoverable-base>/<service-name>
+    final String sb = namespace + "/" + wrapper.getName() + "/service-";
+
     try {
-      final Discoverable wrapper = new DiscoverableWrapper(discoverable);
-      byte[] discoverableBytes = encode(wrapper);
-
-      // Path <discoverable-base>/<service-name>
-      final String sb = discoverableBase + "/" + wrapper.getName() + "/service-";
-
-      try {
-        final String path = client.create(sb, discoverableBytes, CreateMode.EPHEMERAL_SEQUENTIAL, true).get();
-        return new Cancellable() {
-          @Override
-          public void cancel() {
-            lock.lock();
-            try {
-              client.delete(path);
-            } finally {
-              lock.unlock();
+      final String path = client.create(sb, discoverableBytes, CreateMode.EPHEMERAL_SEQUENTIAL, true).get();
+      return new Cancellable() {
+        @Override
+        public void cancel() {
+          try {
+            if(client.exists(path).get() != null) {
+              client.delete(path).get();
             }
+          } catch(Exception e) {
+            throw Throwables.propagate(e);
           }
-        };
-      } catch (InterruptedException e) {
-        throw Throwables.propagate(e);
-      } catch (ExecutionException e) {
-        throw Throwables.propagate(e);
-      }
-    } finally {
-      lock.unlock();
+        }
+      };
+    } catch (InterruptedException e) {
+      throw Throwables.propagate(e);
+    } catch (ExecutionException e) {
+      throw Throwables.propagate(e);
     }
   }
 
@@ -137,7 +174,7 @@ public class ZKDiscoveryService extends AbstractIdleService implements Discovery
    * @param service for which we are requested to retrieve the list of {@link Discoverable}
    */
   private void getChildren(final String service) {
-    final String sb = discoverableBase + "/" + service;
+    final String sb = namespace + "/" + service;
     try {
       if(! client.isRunning()) {
         return;
@@ -154,32 +191,42 @@ public class ZKDiscoveryService extends AbstractIdleService implements Discovery
           }
         }
       }).get().getChildren();
-      services.removeAll(service);
+
+      // Make a copy of services, remove the service that has changed and then
+      // add the new endpoints available in zookeeper.
+      Multimap<String, Discoverable> newServices = HashMultimap.create(services.get());
+      newServices.removeAll(service);
       for(String child : children) {
-        NodeData data = client.getData(sb + "/" + child).get();
-        services.put(service, decode(data.getData()));
+        String path = sb + "/" + child;
+        if(client.exists(path).get() != null) {
+          NodeData data = client.getData(path).get();
+          newServices.put(service, decode(data.getData()));
+        }
       }
+      // Replace the local service register with changes.
+      services.set(newServices);
     } catch (Exception e) {
       throw Throwables.propagate(e);
     }
   }
 
+  /**
+   * Discovers a <code>service</code> available
+   *
+   * @param service name of the service to be discovered.
+   * @return Live {@link Iterable} of {@link Discoverable} <code>service</code>
+   */
   @Override
   public Iterable<Discoverable> discover(final String service) {
     Preconditions.checkState(isRunning(), "Service is not running");
     return new Iterable<Discoverable>() {
       @Override
       public Iterator<Discoverable> iterator() {
-        lock.lock();
-        try {
-          Preconditions.checkState(isRunning(), "Service is not running");
-          if(! services.containsKey(service)) {
-            getChildren(service);
-          }
-          return ImmutableList.copyOf(services.get(service)).iterator();
-        } finally {
-          lock.unlock();
+        Preconditions.checkState(isRunning(), "Service is not running");
+        if(! services.get().containsKey(service)) {
+          getChildren(service);
         }
+        return ImmutableList.copyOf(services.get().get(service)).iterator();
       }
     };
   }
