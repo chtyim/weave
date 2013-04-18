@@ -19,7 +19,9 @@ import com.continuuity.weave.zookeeper.Cancellable;
 import com.continuuity.weave.zookeeper.Discoverable;
 import com.continuuity.weave.zookeeper.DiscoveryService;
 import com.continuuity.weave.zookeeper.DiscoveryServiceClient;
+import com.continuuity.zk.NodeChildren;
 import com.continuuity.zk.NodeData;
+import com.continuuity.zk.OperationFuture;
 import com.continuuity.zk.ZKClientService;
 import com.google.common.base.Charsets;
 import com.google.common.base.Preconditions;
@@ -28,6 +30,10 @@ import com.google.common.collect.HashMultimap;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Multimap;
 import com.google.common.util.concurrent.AbstractIdleService;
+import com.google.common.util.concurrent.FutureCallback;
+import com.google.common.util.concurrent.Futures;
+import com.google.common.util.concurrent.ListenableFuture;
+import com.google.common.util.concurrent.SettableFuture;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonDeserializationContext;
 import com.google.gson.JsonDeserializer;
@@ -40,6 +46,8 @@ import com.google.inject.Singleton;
 import org.apache.zookeeper.CreateMode;
 import org.apache.zookeeper.WatchedEvent;
 import org.apache.zookeeper.Watcher;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.lang.reflect.Type;
@@ -85,6 +93,7 @@ import java.util.concurrent.atomic.AtomicReference;
  */
 @Singleton
 public class ZKDiscoveryService extends AbstractIdleService implements DiscoveryService, DiscoveryServiceClient {
+  private static final Logger LOG = LoggerFactory.getLogger(ZKDiscoveryService.class);
   private static final String NAMESPACE = "/discoverable";
   private final AtomicReference<Multimap<String, Discoverable>> services;
   private final ZKClientService client;
@@ -173,41 +182,54 @@ public class ZKDiscoveryService extends AbstractIdleService implements Discovery
    * </p>
    * @param service for which we are requested to retrieve the list of {@link Discoverable}
    */
-  private void getChildren(final String service) {
+  private ListenableFuture<Boolean> getChildren(final String service) {
+    final SettableFuture<Boolean> result = SettableFuture.create();
     final String sb = namespace + "/" + service;
-    try {
-      if(! client.isRunning()) {
-        return;
-      }
-      List<String> children = client.getChildren(sb, new Watcher() {
-        @Override
-        public void process(WatchedEvent event) {
-          if(event.getType() == Event.EventType.NodeChildrenChanged) {
-            try {
-              getChildren(new File(event.getPath()).getName());
-            } catch (Exception e) {
-              throw Throwables.propagate(e);
-            }
+
+    if(! client.isRunning()) {
+      return result;
+    }
+
+    OperationFuture<NodeChildren> nodeChildren = client.getChildren(sb, new Watcher() {
+      @Override
+      public void process(WatchedEvent event) {
+        if(event.getType() == Event.EventType.NodeChildrenChanged) {
+          try {
+            getChildren(service);
+          } catch (Exception e) {
+            throw Throwables.propagate(e);
           }
         }
-      }).get().getChildren();
-
-      // Make a copy of services, remove the service that has changed and then
-      // add the new endpoints available in zookeeper.
-      Multimap<String, Discoverable> newServices = HashMultimap.create(services.get());
-      newServices.removeAll(service);
-      for(String child : children) {
-        String path = sb + "/" + child;
-        if(client.exists(path).get() != null) {
-          NodeData data = client.getData(path).get();
-          newServices.put(service, decode(data.getData()));
-        }
       }
-      // Replace the local service register with changes.
-      services.set(newServices);
-    } catch (Exception e) {
-      throw Throwables.propagate(e);
-    }
+    });
+
+    Futures.addCallback(nodeChildren, new FutureCallback<NodeChildren>() {
+      @Override
+      public void onSuccess(NodeChildren children) {
+        Multimap<String, Discoverable> newServices = HashMultimap.create(services.get());
+        newServices.removeAll(service);
+        for(String child : children.getChildren()) {
+          try {
+            String path = sb + "/" + child;
+            if(client.exists(path).get() != null) {
+              NodeData data = client.getData(path).get();
+              newServices.put(service, decode(data.getData()));
+            }
+          } catch (Exception e) {
+            throw Throwables.propagate(e);
+          }
+        }
+        // Replace the local service register with changes.
+        services.set(newServices);
+        result.set(true);
+      }
+
+      @Override
+      public void onFailure(Throwable t) {
+        LOG.trace(t.getMessage());
+      }
+    });
+    return result;
   }
 
   /**
@@ -224,7 +246,11 @@ public class ZKDiscoveryService extends AbstractIdleService implements Discovery
       public Iterator<Discoverable> iterator() {
         Preconditions.checkState(isRunning(), "Service is not running");
         if(! services.get().containsKey(service)) {
-          getChildren(service);
+          try {
+            getChildren(service).get();
+          } catch (Exception e ) {
+            throw Throwables.propagate(e);
+          }
         }
         return ImmutableList.copyOf(services.get().get(service)).iterator();
       }

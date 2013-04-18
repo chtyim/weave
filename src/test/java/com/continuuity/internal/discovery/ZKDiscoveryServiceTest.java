@@ -81,8 +81,8 @@ public class ZKDiscoveryServiceTest {
       cancellable.cancel();
 
       // There should be no service.
+      TimeUnit.MILLISECONDS.sleep(50);
       discoverables = discoveryServiceClient.discover("foo");
-      TimeUnit.MILLISECONDS.sleep(100);
       Assert.assertTrue(Iterables.size(discoverables) == 0);
     } finally {
       discoveryService.stopAndWait();
@@ -112,7 +112,7 @@ public class ZKDiscoveryServiceTest {
 
       for(int i = 5; i > 1; --i) {
         cancellables.get(5 - i).cancel();
-        TimeUnit.MILLISECONDS.sleep(100);
+        TimeUnit.MILLISECONDS.sleep(50);
         discoverables = discoveryServiceClient.discover("manyDiscoverable");
         int k = Iterables.size(discoverables);
         Assert.assertTrue(k == i-1);
@@ -155,6 +155,7 @@ public class ZKDiscoveryServiceTest {
       Assert.assertTrue(Iterables.size(discoverables) == 2);
 
       cancellables.add(register(discoveryService, "service3", "localhost", 3));
+      TimeUnit.MILLISECONDS.sleep(100);
       Assert.assertTrue(Iterables.size(discoverables) == 3);
     } finally {
       for(Cancellable cancellable : cancellables) {
