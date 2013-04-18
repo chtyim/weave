@@ -13,22 +13,23 @@
  *   License for the specific language governing permissions and limitations under
  *   the License.
  */
-package com.continuuity.discovery;
 
-import com.google.common.util.concurrent.Service;
+package com.continuuity.weave.zookeeper;
+
+import java.net.InetSocketAddress;
 
 /**
- *
+ * Discoverable defines the attributes of service to be discovered.
  */
-public interface DiscoveryServiceClient extends Service {
+public interface Discoverable {
 
   /**
-   * Retrieves a list of {@link Discoverable} for the a service with the given name.
-   *
-   * @param name Name of the service
-   * @return A live {@link Iterable} that on each call to {@link Iterable#iterator()} returns
-   *         an {@link java.util.Iterator Iterator} that reflects the latest set of
-   *         available {@link Discoverable} services.
+   * @return Name of the service
    */
-  Iterable<Discoverable> discover(String name);
+  String getName();
+
+  /**
+   * @return An {@link InetSocketAddress} representing the host+port of the service.
+   */
+  InetSocketAddress getSocketAddress();
 }

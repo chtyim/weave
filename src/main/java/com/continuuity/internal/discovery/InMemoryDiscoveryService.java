@@ -1,9 +1,9 @@
 package com.continuuity.internal.discovery;
 
-import com.continuuity.discovery.Cancellable;
-import com.continuuity.discovery.Discoverable;
-import com.continuuity.discovery.DiscoveryService;
-import com.continuuity.discovery.DiscoveryServiceClient;
+import com.continuuity.weave.zookeeper.Cancellable;
+import com.continuuity.weave.zookeeper.Discoverable;
+import com.continuuity.weave.zookeeper.DiscoveryService;
+import com.continuuity.weave.zookeeper.DiscoveryServiceClient;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.ImmutableList;

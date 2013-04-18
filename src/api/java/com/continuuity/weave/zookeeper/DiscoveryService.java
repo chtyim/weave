@@ -13,25 +13,20 @@
  *   License for the specific language governing permissions and limitations under
  *   the License.
  */
+package com.continuuity.weave.zookeeper;
 
-package com.continuuity.discovery;
-
-import java.net.InetSocketAddress;
+import com.google.common.util.concurrent.Service;
 
 /**
- *
+ * DiscoveryService defines interface for registering {@link Discoverable}
  */
-public interface Discoverable {
+public interface DiscoveryService extends Service {
 
   /**
-   * @return Name of the service
+   * Registers a {@link Discoverable} service.
+   * @param discoverable Information of the service provider that could be discovered.
+   * @return A {@link Cancellable} for un-registration.
    */
-  String getName();
-
-  /**
-   * @return An {@link InetSocketAddress} representing the host+port of the service.
-   */
-  InetSocketAddress getSocketAddress();
-
-  //TODO: More methods, like getConfig() etc.
+  Cancellable register(Discoverable discoverable);
 }
+

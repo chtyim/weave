@@ -13,20 +13,23 @@
  *   License for the specific language governing permissions and limitations under
  *   the License.
  */
-package com.continuuity.discovery;
+package com.continuuity.weave.zookeeper;
 
 import com.google.common.util.concurrent.Service;
 
 /**
- *
+ * Interface for {@link DiscoveryServiceClient} to discover services
+ * registered with {@link DiscoveryService}
  */
-public interface DiscoveryService extends Service {
+public interface DiscoveryServiceClient extends Service {
 
   /**
-   * Registers a {@link Discoverable} service.
-   * @param discoverable Information of the service provider that could be discovered.
-   * @return A {@link Cancellable} for un-registration.
+   * Retrieves a list of {@link Discoverable} for the a service with the given name.
+   *
+   * @param name Name of the service
+   * @return A live {@link Iterable} that on each call to {@link Iterable#iterator()} returns
+   *         an {@link java.util.Iterator Iterator} that reflects the latest set of
+   *         available {@link Discoverable} services.
    */
-  Cancellable register(Discoverable discoverable);
+  Iterable<Discoverable> discover(String name);
 }
-

@@ -14,11 +14,14 @@
  *   the License.
  */
 
-package com.continuuity.discovery;
+package com.continuuity.weave.zookeeper;
 
 /**
- *
+ * Something, usually a task, that can be cancelled. Cancellation is performed by the cancel method.
  */
 public interface Cancellable {
+  /**
+   * Attempts to cancel execution of this task.
+   */
   void cancel();
 }
