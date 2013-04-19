@@ -180,12 +180,11 @@ public class ZKDiscoveryService extends AbstractIdleService implements Discovery
    * </p>
    * @param service for which we are requested to retrieve the list of {@link Discoverable}
    */
-  private ListenableFuture<Boolean> getChildren(final String service) {
-    final SettableFuture<Boolean> result = SettableFuture.create();
+  private void getChildren(final String service) {
     final String sb = namespace + "/" + service;
 
     if(! client.isRunning()) {
-      return result;
+      return;
     }
 
     OperationFuture<NodeChildren> nodeChildren = client.getChildren(sb, new Watcher() {
@@ -219,7 +218,6 @@ public class ZKDiscoveryService extends AbstractIdleService implements Discovery
         }
         // Replace the local service register with changes.
         services.set(newServices);
-        result.set(true);
       }
 
       @Override
@@ -227,7 +225,6 @@ public class ZKDiscoveryService extends AbstractIdleService implements Discovery
         LOG.trace(t.getMessage());
       }
     });
-    return result;
   }
 
   /**
@@ -244,11 +241,7 @@ public class ZKDiscoveryService extends AbstractIdleService implements Discovery
       public Iterator<Discoverable> iterator() {
         Preconditions.checkState(isRunning(), "Service is not running");
         if(! services.get().containsKey(service)) {
-          try {
-            getChildren(service).get();
-          } catch (Exception e ) {
-            throw Throwables.propagate(e);
-          }
+          getChildren(service);
         }
         return ImmutableList.copyOf(services.get().get(service)).iterator();
       }

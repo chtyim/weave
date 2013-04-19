@@ -62,6 +62,22 @@ public class ZKDiscoveryServiceTest {
     });
   }
 
+
+  private void waitTillExpected(int expected, Iterable<Discoverable> discoverables) throws Exception {
+    for(int i = 0; i < 10; ++i) {
+      TimeUnit.MILLISECONDS.sleep(10);
+      if(Iterables.size(discoverables) == expected) {
+        Assert.assertTrue(true);
+        return;
+      }
+    }
+    if(Iterables.size(discoverables) == expected) {
+      Assert.assertTrue(true);
+    } else {
+      Assert.assertTrue(false);
+    }
+  }
+
   @Test
   public void simpleDiscoverable() throws Exception {
     DiscoveryService discoveryService = new ZKDiscoveryService(zkServer.getConnectionStr());
@@ -75,15 +91,16 @@ public class ZKDiscoveryServiceTest {
       Iterable<Discoverable> discoverables = discoveryServiceClient.discover("foo");
 
       // Discover that registered host:port.
-      Assert.assertTrue(Iterables.size(discoverables) == 1);
+      waitTillExpected(1, discoverables);
 
       // Remove the service
       cancellable.cancel();
 
       // There should be no service.
-      TimeUnit.MILLISECONDS.sleep(50);
+
       discoverables = discoveryServiceClient.discover("foo");
-      Assert.assertTrue(Iterables.size(discoverables) == 0);
+
+      waitTillExpected(0, discoverables);
     } finally {
       discoveryService.stopAndWait();
       discoveryServiceClient.stopAndWait();
@@ -108,14 +125,12 @@ public class ZKDiscoveryServiceTest {
       cancellables.add(register(discoveryService, "manyDiscoverable", "localhost", 5));
 
       Iterable<Discoverable> discoverables = discoveryServiceClient.discover("manyDiscoverable");
-      Assert.assertTrue(Iterables.size(discoverables) == 5);
+      waitTillExpected(5, discoverables);
 
       for(int i = 5; i > 1; --i) {
         cancellables.get(5 - i).cancel();
-        TimeUnit.MILLISECONDS.sleep(50);
         discoverables = discoveryServiceClient.discover("manyDiscoverable");
-        int k = Iterables.size(discoverables);
-        Assert.assertTrue(k == i-1);
+        waitTillExpected(i-1, discoverables);
       }
     } finally {
       discoveryService.stopAndWait();
@@ -146,17 +161,16 @@ public class ZKDiscoveryServiceTest {
       cancellables.add(register(discoveryService, "service3", "localhost", 2));
 
       Iterable<Discoverable> discoverables = discoveryServiceClient.discover("service1");
-      Assert.assertTrue(Iterables.size(discoverables) == 5);
+      waitTillExpected(5, discoverables);
 
       discoverables = discoveryServiceClient.discover("service2");
-      Assert.assertTrue(Iterables.size(discoverables) == 3);
+      waitTillExpected(3, discoverables);
 
       discoverables = discoveryServiceClient.discover("service3");
-      Assert.assertTrue(Iterables.size(discoverables) == 2);
+      waitTillExpected(2, discoverables);
 
       cancellables.add(register(discoveryService, "service3", "localhost", 3));
-      TimeUnit.MILLISECONDS.sleep(100);
-      Assert.assertTrue(Iterables.size(discoverables) == 3);
+      waitTillExpected(3, discoverables); // Shows live iterator.
     } finally {
       for(Cancellable cancellable : cancellables) {
         TimeUnit.MILLISECONDS.sleep(100);
