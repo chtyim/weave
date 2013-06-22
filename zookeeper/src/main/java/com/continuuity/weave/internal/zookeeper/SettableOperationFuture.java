@@ -25,12 +25,12 @@ import java.util.concurrent.Executor;
  * An implementation for {@link OperationFuture} that allows setting result directly.
  * Also, all listener callback will be fired from the given executor.
  */
-final class SettableOperationFuture<V> extends AbstractFuture<V> implements OperationFuture<V> {
+public final class SettableOperationFuture<V> extends AbstractFuture<V> implements OperationFuture<V> {
 
   private final String requestPath;
   private final Executor executor;
 
-  static <V> SettableOperationFuture<V> create(String path, Executor executor) {
+  public static <V> SettableOperationFuture<V> create(String path, Executor executor) {
     return new SettableOperationFuture<V>(path, executor);
   }
 

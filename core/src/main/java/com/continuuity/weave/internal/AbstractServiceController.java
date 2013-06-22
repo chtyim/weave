@@ -32,9 +32,13 @@ import com.google.common.base.Charsets;
 import com.google.common.base.Function;
 import com.google.common.collect.Maps;
 import com.google.common.util.concurrent.AsyncFunction;
+import com.google.common.util.concurrent.FutureCallback;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.gson.GsonBuilder;
+import org.apache.zookeeper.WatchedEvent;
+import org.apache.zookeeper.Watcher;
+import org.apache.zookeeper.data.Stat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -42,6 +46,7 @@ import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Executor;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -55,6 +60,7 @@ public abstract class AbstractServiceController implements ServiceController, Ca
   private final AtomicReference<StateNode> stateNode;
   private final ListenerExecutors listenerExecutors;
   private final AtomicReference<byte[]> liveNodeData;
+  private final FutureCallback<NodeData> nodeDataFutureCallback;
   private volatile Cancellable watchCanceller;
   protected final ZKClient zkClient;
 
@@ -64,6 +70,7 @@ public abstract class AbstractServiceController implements ServiceController, Ca
     this.stateNode = new AtomicReference<StateNode>(new StateNode(State.UNKNOWN, null));
     this.listenerExecutors = new ListenerExecutors();
     this.liveNodeData = new AtomicReference<byte[]>();
+    this.nodeDataFutureCallback = createNodeDataCallback();
   }
 
   public void start() {
@@ -75,14 +82,9 @@ public abstract class AbstractServiceController implements ServiceController, Ca
         fireStateChange(decode(nodeData));
       }
     });
-    // Watch for instance node data
-    final Cancellable cancelInstance = ZKOperations.watchData(zkClient, "/instances/" + runId.getId(),
-                                                              new ZKOperations.DataCallback() {
-      @Override
-      public void updated(NodeData nodeData) {
-        liveNodeData.set(nodeData.getData());
-      }
-    });
+
+    final Cancellable cancelInstance = watchInstanceNode();
+
     watchCanceller = new Cancellable() {
       @Override
       public void cancel() {
@@ -144,7 +146,7 @@ public abstract class AbstractServiceController implements ServiceController, Ca
         public ListenableFuture<State> apply(State input) throws Exception {
           // Wait for the instance ephemeral node goes away
           return Futures.transform(
-            ZKOperations.watchDeleted(zkClient, "/instances/" + runId.getId()), new Function<String, State>() {
+            ZKOperations.watchDeleted(zkClient, getInstancePath()), new Function<String, State>() {
                @Override
                public State apply(String input) {
                  LOG.info("Remote service stopped: " + runId.getId());
@@ -173,6 +175,17 @@ public abstract class AbstractServiceController implements ServiceController, Ca
 
   protected final String getMessagePrefix() {
     return getZKPath("messages/msg");
+  }
+
+  /**
+   * Returns the zookeeper node path for the ephemeral instance node for this runId.
+   */
+  protected String getInstancePath() {
+    return String.format("/instances/%s", runId.getId());
+  }
+
+  protected void instanceNodeRemoved() {
+    fireStateChange(new StateNode(State.TERMINATED, new StackTraceElement[]));
   }
 
   protected final void fireStateChange(StateNode state) {
@@ -222,6 +235,64 @@ public abstract class AbstractServiceController implements ServiceController, Ca
         listener.failed(state.getStackTraces());
         break;
     }
+  }
+
+  /**
+   * Repeatedly watch for changes in the run instance ephemeral node.
+   * @return A {@link Cancellable} that will cancel the watch action.
+   */
+  private Cancellable watchInstanceNode() {
+    final AtomicBoolean cancelled = new AtomicBoolean(false);
+    Futures.addCallback(zkClient.exists(getInstancePath(), new Watcher() {
+      @Override
+      public void process(WatchedEvent event) {
+        if (cancelled.get()) {
+          return;
+        }
+        switch (event.getType()) {
+          case NodeCreated:
+          case NodeDataChanged:
+            watchInstanceNode();
+            break;
+          case NodeDeleted:
+            instanceNodeRemoved();
+            break;
+        }
+      }
+    }), new FutureCallback<Stat>() {
+      @Override
+      public void onSuccess(Stat result) {
+        if (result != null) {
+          Futures.addCallback(zkClient.getData(getInstancePath()), nodeDataFutureCallback);
+        }```````````
+      }
+
+      @Override
+      public void onFailure(Throwable t) {
+        LOG.error("Failed to check exists on instance node {}", getInstancePath());
+      }
+    });
+    return new Cancellable() {
+      @Override
+      public void cancel() {
+        cancelled.set(true);
+      }
+    };
+  }
+
+  private FutureCallback<NodeData> createNodeDataCallback() {
+    return new FutureCallback<NodeData>() {
+      @Override
+      public void onSuccess(NodeData result) {
+        liveNodeData.set(result.getData());
+      }
+
+      @Override
+      public void onFailure(Throwable t) {
+        LOG.error("Failed to fetch node data.", t);
+        liveNodeData.set(null);
+      }
+    };
   }
 
   private static final class ListenerExecutors implements Listener {

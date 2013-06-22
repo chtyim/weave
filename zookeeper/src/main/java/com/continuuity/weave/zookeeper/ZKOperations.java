@@ -17,6 +17,7 @@ package com.continuuity.weave.zookeeper;
 
 import com.continuuity.weave.common.Cancellable;
 import com.continuuity.weave.common.Threads;
+import com.continuuity.weave.internal.zookeeper.SettableOperationFuture;
 import com.google.common.util.concurrent.FutureCallback;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
@@ -28,6 +29,7 @@ import org.apache.zookeeper.data.Stat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -161,6 +163,43 @@ public final class ZKOperations {
         cancelled.set(true);
       }
     };
+  }
+
+  /**
+   * Returns a new {@link OperationFuture} that the result will be the same as the given future, except that when
+   * the source future is having an exception matching the giving exception type, the errorResult will be set
+   * in to the returned {@link OperationFuture}.
+   * @param future The source future.
+   * @param exceptionType Type of {@link KeeperException} to be ignored.
+   * @param errorResult Object to be set into the resulting future on a matching exception.
+   * @param <V> Type of the result.
+   * @return A new {@link OperationFuture}.
+   */
+  public static <V> OperationFuture<V> ignoreError(OperationFuture<V> future,
+                                                   final Class<? extends KeeperException> exceptionType,
+                                                   final V errorResult) {
+    final SettableOperationFuture<V> resultFuture = SettableOperationFuture.create(future.getRequestPath(),
+                                                                                   Threads.SAME_THREAD_EXECUTOR);
+
+    Futures.addCallback(future, new FutureCallback<V>() {
+      @Override
+      public void onSuccess(V result) {
+        resultFuture.set(result);
+      }
+
+      @Override
+      public void onFailure(Throwable t) {
+        if (exceptionType.isAssignableFrom(t.getClass())) {
+          resultFuture.set(errorResult);
+        } else if (t instanceof CancellationException) {
+          resultFuture.cancel(true);
+        } else {
+          resultFuture.setException(t);
+        }
+      }
+    }, Threads.SAME_THREAD_EXECUTOR);
+
+    return resultFuture;
   }
 
   /**
