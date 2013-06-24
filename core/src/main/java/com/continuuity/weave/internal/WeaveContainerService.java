@@ -22,7 +22,6 @@ import com.continuuity.weave.api.WeaveRunnableSpecification;
 import com.continuuity.weave.common.Threads;
 import com.continuuity.weave.internal.state.Message;
 import com.continuuity.weave.internal.state.MessageCallback;
-import com.continuuity.weave.internal.state.ZKServiceDecorator;
 import com.continuuity.weave.internal.utils.Instances;
 import com.continuuity.weave.zookeeper.ZKClient;
 import com.google.common.base.Preconditions;

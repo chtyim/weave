@@ -13,13 +13,17 @@
  * License for the specific language governing permissions and limitations under
  * the License.
  */
-package com.continuuity.weave.internal.state;
+package com.continuuity.weave.internal;
 
 import com.continuuity.weave.api.RunId;
 import com.continuuity.weave.api.ServiceController;
 import com.continuuity.weave.common.Threads;
 import com.continuuity.weave.internal.json.StackTraceElementCodec;
 import com.continuuity.weave.internal.json.StateNodeCodec;
+import com.continuuity.weave.internal.state.Message;
+import com.continuuity.weave.internal.state.MessageCallback;
+import com.continuuity.weave.internal.state.MessageCodec;
+import com.continuuity.weave.internal.state.StateNode;
 import com.continuuity.weave.zookeeper.NodeChildren;
 import com.continuuity.weave.zookeeper.NodeData;
 import com.continuuity.weave.zookeeper.OperationFuture;

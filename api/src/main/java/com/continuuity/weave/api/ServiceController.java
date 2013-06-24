@@ -15,15 +15,15 @@
  */
 package com.continuuity.weave.api;
 
-import com.continuuity.weave.common.Cancellable;
 import com.google.common.util.concurrent.ListenableFuture;
+import com.google.common.util.concurrent.Service;
 
 import java.util.concurrent.Executor;
 
 /**
- * This interface is for controlling a running application.
+ * This interface is for controlling a remote running service.
  */
-public interface ServiceController {
+public interface ServiceController extends Service {
 
   /**
    * Returns the {@link RunId} of the running application.
@@ -48,85 +48,21 @@ public interface ServiceController {
   ListenableFuture<Command> sendCommand(String runnableName, Command command);
 
   /**
-   * Returns the current state of the running application that this controller is connected to.
-   */
-  State getState();
-
-  /**
-   * Requests to stop a running service.
-   * @return A {@link ListenableFuture} that will be completed when the service is stopped.
-   */
-  ListenableFuture<State> stop();
-
-  /**
-   * Requests to stop a running service and wait for its completion.
-   */
-  void stopAndWait();
-
-  /**
    * Requests to forcefully kills a running service.
    */
   void kill();
 
   /**
-   * Adds a listener to watch for state changes of the service.
-   * @param listener The listener to attach.
-   * @param executor An executor that executes calls to the given listener.
-   * @return A {@link Cancellable} for removing the listener.
+   * Registers a {@link Listener} to be {@linkplain Executor#execute executed} on the given
+   * executor.  The listener will have the corresponding transition method called whenever the
+   * service changes state. When added, the current state of the service will be reflected through
+   * callback to the listener. Methods on the listener is guaranteed to be called no more than once.
+   *
+   * @param listener the listener to run when the service changes state is complete
+   * @param executor the executor in which the the listeners callback methods will be run. For fast,
+   *     lightweight listeners that would be safe to execute in any thread, consider
+   *     {@link com.google.common.util.concurrent.MoreExecutors#sameThreadExecutor}.
    */
-  Cancellable addListener(Listener listener, Executor executor);
-
-  /**
-   * Represents the service state.
-   */
-  enum State {
-
-    /**
-     * A service state is not known.
-     */
-    UNKNOWN,
-
-    /**
-     * A service in this state is transitioning to {@link #RUNNING}.
-     */
-    STARTING,
-
-    /**
-     * A service in this state is operational.
-     */
-    RUNNING,
-
-    /**
-     * A service in this state is transitioning to {@link #TERMINATED}.
-     */
-    STOPPING,
-
-    /**
-     * A service in this state has completed execution normally. It does minimal work and consumes
-     * minimal resources.
-     */
-    TERMINATED,
-
-    /**
-     * A service in this state has encountered a problem and may not be operational. It cannot be
-     * started nor stopped.
-     */
-    FAILED
-  }
-
-  /**
-   * Listener for listening to service state changes.
-   */
-  interface Listener {
-
-    void starting();
-
-    void running();
-
-    void stopping();
-
-    void terminated();
-
-    void failed(StackTraceElement[] stackTraces);
-  }
+  @Override
+  void addListener(Listener listener, Executor executor);
 }

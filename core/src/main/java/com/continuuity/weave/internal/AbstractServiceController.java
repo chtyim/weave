@@ -39,6 +39,7 @@ import com.google.gson.GsonBuilder;
 import org.apache.zookeeper.WatchedEvent;
 import org.apache.zookeeper.Watcher;
 import org.apache.zookeeper.data.Stat;
+import org.omg.CORBA.UNKNOWN;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -67,7 +68,7 @@ public abstract class AbstractServiceController implements ServiceController, Ca
   protected AbstractServiceController(ZKClient zkClient, RunId runId) {
     this.zkClient = zkClient;
     this.runId = runId;
-    this.stateNode = new AtomicReference<StateNode>(new StateNode(State.UNKNOWN, null));
+    this.stateNode = new AtomicReference<StateNode>(new StateNode(UNKNOWN, null));
     this.listenerExecutors = new ListenerExecutors();
     this.liveNodeData = new AtomicReference<byte[]>();
     this.nodeDataFutureCallback = createNodeDataCallback();
@@ -137,7 +138,7 @@ public abstract class AbstractServiceController implements ServiceController, Ca
   @Override
   public ListenableFuture<State> stop() {
     State oldState = stateNode.get().getState();
-    if (oldState == State.UNKNOWN || oldState == State.STARTING || oldState == State.RUNNING) {
+    if (oldState == UNKNOWN || oldState == State.STARTING || oldState == State.RUNNING) {
       watchCanceller.cancel();
       return Futures.transform(
         ZKMessages.sendMessage(zkClient, getMessagePrefix(), SystemMessages.stopApplication(),
@@ -264,7 +265,7 @@ public abstract class AbstractServiceController implements ServiceController, Ca
       public void onSuccess(Stat result) {
         if (result != null) {
           Futures.addCallback(zkClient.getData(getInstancePath()), nodeDataFutureCallback);
-        }```````````
+        }
       }
 
       @Override
