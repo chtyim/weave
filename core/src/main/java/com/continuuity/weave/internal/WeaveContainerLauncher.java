@@ -20,8 +20,8 @@ import com.continuuity.weave.api.RunId;
 import com.continuuity.weave.api.RuntimeSpecification;
 import com.continuuity.weave.common.Threads;
 import com.continuuity.weave.internal.state.Message;
-import com.continuuity.weave.internal.state.StateNode;
 import com.continuuity.weave.launcher.WeaveLauncher;
+import com.continuuity.weave.zookeeper.NodeData;
 import com.continuuity.weave.zookeeper.ZKClient;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Sets;
@@ -95,7 +95,7 @@ public final class WeaveContainerLauncher {
     return controller;
   }
 
-  private static final class WeaveContainerControllerImpl extends AbstractServiceController
+  private static final class WeaveContainerControllerImpl extends AbstractZKServiceController
                                                           implements WeaveContainerController {
 
     private final ProcessLauncher.ProcessController processController;
@@ -103,7 +103,7 @@ public final class WeaveContainerLauncher {
 
     protected WeaveContainerControllerImpl(ZKClient zkClient, RunId runId,
                                            ProcessLauncher.ProcessController processController) {
-      super(zkClient, runId);
+      super(runId, zkClient);
       this.processController = processController;
       this.pendingFutures = Sets.newIdentityHashSet();
     }
@@ -122,6 +122,16 @@ public final class WeaveContainerLauncher {
     }
 
     @Override
+    protected void doStartUp() {
+      //To change body of implemented methods use File | Settings | File Templates.
+    }
+
+    @Override
+    protected void instanceNodeUpdated(NodeData nodeData) {
+      //To change body of implemented methods use File | Settings | File Templates.
+    }
+
+    @Override
     public ListenableFuture<Message> sendMessage(Message message) {
       return sendMessage(message, message);
     }
@@ -132,13 +142,18 @@ public final class WeaveContainerLauncher {
         future.cancel(true);
       }
       if (exitStatus != 0) {  // If a container terminated with exit code != 0, treat it as error
-        fireStateChange(new StateNode(State.FAILED, new StackTraceElement[0]));
+//        fireStateChange(new StateNode(State.FAILED, new StackTraceElement[0]));
       }
     }
 
     @Override
     public void kill() {
       processController.kill();
+    }
+
+    @Override
+    protected void shutDown() {
+      //To change body of implemented methods use File | Settings | File Templates.
     }
   }
 }

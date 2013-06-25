@@ -22,16 +22,27 @@ import com.continuuity.weave.api.Command;
  */
 public final class Messages {
 
+  /**
+   * Creates a {@link Message.Type#USER} type {@link Message} that sends the giving {@link Command} to a
+   * particular runnable.
+   *
+   * @param runnableName Name of the runnable.
+   * @param command The user command to send.
+   * @return A new instance of {@link Message}.
+   */
   public static Message createForRunnable(String runnableName, Command command) {
     return new SimpleMessage(Message.Type.USER, Message.Scope.RUNNABLE, runnableName, command);
   }
 
+  /**
+   * Creates a {@link Message.Type#USER} type {@link Message} that sends the giving {@link Command} to all
+   * runnables.
+   *
+   * @param command The user command to send.
+   * @return A new instance of {@link Message}.
+   */
   public static Message createForAll(Command command) {
     return new SimpleMessage(Message.Type.USER, Message.Scope.ALL_RUNNABLE, null, command);
-  }
-
-  public static Message createForApplication(Command command) {
-    return new SimpleMessage(Message.Type.USER, Message.Scope.APPLICATION, null, command);
   }
 
   private Messages() {

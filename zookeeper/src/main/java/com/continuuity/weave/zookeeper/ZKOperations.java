@@ -18,6 +18,8 @@ package com.continuuity.weave.zookeeper;
 import com.continuuity.weave.common.Cancellable;
 import com.continuuity.weave.common.Threads;
 import com.continuuity.weave.internal.zookeeper.SettableOperationFuture;
+import com.google.common.base.Function;
+import com.google.common.collect.Lists;
 import com.google.common.util.concurrent.FutureCallback;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
@@ -29,6 +31,7 @@ import org.apache.zookeeper.data.Stat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.List;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -196,6 +199,88 @@ public final class ZKOperations {
         } else {
           resultFuture.setException(t);
         }
+      }
+    }, Threads.SAME_THREAD_EXECUTOR);
+
+    return resultFuture;
+  }
+
+  /**
+   * Deletes the given path recursively. The delete method will keep running until the given path is successfully
+   * removed, which means if there are new node created under the given path while deleting, they'll get deleted
+   * again.  If there is {@link KeeperException} during the deletion other than
+   *         {@link KeeperException.NotEmptyException}, the exception would be reflected in the result future
+   *         and deletion process will stop, leaving the given path with intermediate state.
+   *
+   * @param path The path to delete.
+   * @return An {@link OperationFuture} that will be completed when the given path is deleted or bailed due to
+   *         exception.
+   */
+  public static OperationFuture<String> recursiveDelete(final ZKClient zkClient, final String path) {
+    LOG.info("Deleting: {}", path);
+
+    final SettableOperationFuture<String> resultFuture = SettableOperationFuture.create(path,
+                                                                                        Threads.SAME_THREAD_EXECUTOR);
+    // Try to delete the given path.
+    Futures.addCallback(zkClient.delete(path), new FutureCallback<String>() {
+      private final FutureCallback<String> deleteCallback = this;
+
+      @Override
+      public void onSuccess(String result) {
+        LOG.info("Deleted: " + result);
+        // Path deleted successfully. Operation done.
+        resultFuture.set(result);
+      }
+
+      @Override
+      public void onFailure(Throwable t) {
+        LOG.info("Failed to delete.", t);
+        // Failed to delete the given path
+        if (!(t instanceof KeeperException.NotEmptyException)) {
+          // For errors other than NotEmptyException, treat the operation as failed.
+          resultFuture.setException(t);
+          return;
+        }
+
+        // If failed because of NotEmptyException, get the list of children under the given path
+        Futures.addCallback(zkClient.getChildren(path), new FutureCallback<NodeChildren>() {
+
+          @Override
+          public void onSuccess(NodeChildren result) {
+            // Function for deleting children node recursively.
+            Function<String, OperationFuture<String>> deleteFunc = new Function<String, OperationFuture<String>>() {
+              @Override
+              public OperationFuture<String> apply(String child) {
+                return recursiveDelete(zkClient, path + "/" + child);
+              }
+            };
+
+            // Delete all children nodes recursively.
+            final List<OperationFuture<String>> deleteFutures = Lists.transform(result.getChildren(), deleteFunc);
+
+            // When deletion of all children succeeded, delete the given path again.
+            Futures.successfulAsList(deleteFutures).addListener(new Runnable() {
+              @Override
+              public void run() {
+                for (OperationFuture<String> deleteFuture : deleteFutures) {
+                  try {
+                    // If any exception when deleting children, treat the operation as failed.
+                    deleteFuture.get();
+                  } catch (Exception e) {
+                    resultFuture.setException(e.getCause());
+                  }
+                }
+                Futures.addCallback(zkClient.delete(path), deleteCallback);
+              }
+            }, Threads.SAME_THREAD_EXECUTOR);
+          }
+
+          @Override
+          public void onFailure(Throwable t) {
+            // If failed to get list of children, treat the operation as failed.
+            resultFuture.setException(t);
+          }
+        }, Threads.SAME_THREAD_EXECUTOR);
       }
     }, Threads.SAME_THREAD_EXECUTOR);
 
