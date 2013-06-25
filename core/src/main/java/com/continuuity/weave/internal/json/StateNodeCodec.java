@@ -36,15 +36,20 @@ public final class StateNodeCodec implements JsonSerializer<StateNode>, JsonDese
   public StateNode deserialize(JsonElement json, Type typeOfT,
                                JsonDeserializationContext context) throws JsonParseException {
     JsonObject jsonObj = json.getAsJsonObject();
-    return new StateNode(ServiceController.State.valueOf(jsonObj.get("state").getAsString()),
-                         context.<StackTraceElement[]>deserialize(jsonObj.get("stackTraces"),
-                                                                  StackTraceElement[].class));
+    ServiceController.State state = ServiceController.State.valueOf(jsonObj.get("state").getAsString());
+    String errorMessage = jsonObj.has("errorMessage") ? jsonObj.get("errorMessage").getAsString() : null;
+
+    return new StateNode(state, errorMessage,
+                         context.<StackTraceElement[]>deserialize(jsonObj.get("stackTraces"), StackTraceElement[].class));
   }
 
   @Override
   public JsonElement serialize(StateNode src, Type typeOfSrc, JsonSerializationContext context) {
     JsonObject jsonObj = new JsonObject();
     jsonObj.addProperty("state", src.getState().name());
+    if (src.getErrorMessage() != null) {
+      jsonObj.addProperty("errorMessage", src.getErrorMessage());
+    }
     if (src.getStackTraces() != null) {
       jsonObj.add("stackTraces", context.serialize(src.getStackTraces(), StackTraceElement[].class));
     }

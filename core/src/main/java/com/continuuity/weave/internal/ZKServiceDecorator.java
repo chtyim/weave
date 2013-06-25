@@ -28,10 +28,9 @@ import com.continuuity.weave.zookeeper.NodeChildren;
 import com.continuuity.weave.zookeeper.NodeData;
 import com.continuuity.weave.zookeeper.OperationFuture;
 import com.continuuity.weave.zookeeper.ZKClient;
+import com.continuuity.weave.zookeeper.ZKOperations;
 import com.google.common.base.Charsets;
 import com.google.common.base.Supplier;
-import com.google.common.base.Throwables;
-import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import com.google.common.util.concurrent.AbstractService;
 import com.google.common.util.concurrent.AsyncFunction;
@@ -45,7 +44,6 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import org.apache.zookeeper.CreateMode;
-import org.apache.zookeeper.KeeperException;
 import org.apache.zookeeper.WatchedEvent;
 import org.apache.zookeeper.Watcher;
 import org.apache.zookeeper.data.Stat;
@@ -54,7 +52,6 @@ import org.slf4j.LoggerFactory;
 
 import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -88,38 +85,36 @@ public final class ZKServiceDecorator extends AbstractService {
     }
   }
 
+  /**
+   * Deletes the given ZK path recursively and create the path again.
+   */
+  private ListenableFuture<String> deleteAndCreate(final String path, final byte[] data, final CreateMode mode) {
+    return Futures.transform(ZKOperations.recursiveDelete(zkClient, path), new AsyncFunction<String, String>() {
+      @Override
+      public ListenableFuture<String> apply(String input) throws Exception {
+        return zkClient.create(path, data, mode);
+      }
+    }, Threads.SAME_THREAD_EXECUTOR);
+  }
+
   @Override
   protected void doStart() {
     callbackExecutor = Executors.newSingleThreadExecutor(Threads.createDaemonThreadFactory("message-callback"));
     zkClient.addConnectionWatcher(createConnectionWatcher());
 
     // Create nodes for states and messaging
-    StateNode stateNode = new StateNode(ServiceController.State.STARTING, null);
+    StateNode stateNode = new StateNode(ServiceController.State.STARTING);
 
-    final List<OperationFuture<String>> futures = ImmutableList.of(
-      zkClient.create(getZKPath("messages"), null, CreateMode.PERSISTENT),
-      zkClient.create(getZKPath("state"), encodeStateNode(stateNode), CreateMode.PERSISTENT)
+    final ListenableFuture<List<String>> createFuture = Futures.allAsList(
+      deleteAndCreate(getZKPath("messages"), null, CreateMode.PERSISTENT),
+      deleteAndCreate(getZKPath("state"), encodeStateNode(stateNode), CreateMode.PERSISTENT)
     );
-    final ListenableFuture<List<String>> createFuture = Futures.successfulAsList(futures);
 
     createFuture.addListener(new Runnable() {
       @Override
       public void run() {
         try {
-          for (OperationFuture<String> future : futures) {
-            try {
-              future.get();
-            } catch (ExecutionException e) {
-              Throwable cause = e.getCause();
-              if (cause instanceof KeeperException
-                && ((KeeperException) cause).code() == KeeperException.Code.NODEEXISTS) {
-                LOG.warn("Node already exists: {}", future.getRequestPath());
-              } else {
-                throw Throwables.propagate(cause);
-              }
-            }
-          }
-
+          createFuture.get();
           // Starts the decorated service
           decoratedService.addListener(createListener(), Threads.SAME_THREAD_EXECUTOR);
           decoratedService.start();
@@ -356,7 +351,7 @@ public final class ZKServiceDecorator extends AbstractService {
       if (zkFailure) {
         return;
       }
-      StateNode stateNode = new StateNode(ServiceController.State.TERMINATED, null);
+      StateNode stateNode = new StateNode(ServiceController.State.TERMINATED);
       Futures.addCallback(zkClient.setData(getZKPath("state"), encodeStateNode(stateNode)), new FutureCallback<Stat>() {
           @Override
           public void onSuccess(Stat result) {
@@ -377,7 +372,7 @@ public final class ZKServiceDecorator extends AbstractService {
         return;
       }
 
-      StateNode stateNode = new StateNode(ServiceController.State.FAILED, failure.getStackTrace());
+      StateNode stateNode = new StateNode(failure);
       zkClient.setData(getZKPath("state"), encodeStateNode(stateNode)).addListener(new Runnable() {
         @Override
         public void run() {
@@ -390,7 +385,7 @@ public final class ZKServiceDecorator extends AbstractService {
       if (zkFailure) {
         return;
       }
-      StateNode stateNode = new StateNode(state, null);
+      StateNode stateNode = new StateNode(state);
       stopOnFailure(zkClient.setData(getZKPath("state"), encodeStateNode(stateNode)));
     }
 

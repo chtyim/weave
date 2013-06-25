@@ -16,15 +16,7 @@
 package com.continuuity.weave.internal.state;
 
 import com.continuuity.weave.api.ServiceController;
-import com.google.gson.JsonDeserializationContext;
-import com.google.gson.JsonDeserializer;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParseException;
-import com.google.gson.JsonSerializationContext;
-import com.google.gson.JsonSerializer;
-
-import java.lang.reflect.Type;
+import com.google.common.util.concurrent.Service;
 
 /**
  *
@@ -32,15 +24,39 @@ import java.lang.reflect.Type;
 public final class StateNode {
 
   private final ServiceController.State state;
+  private final String errorMessage;
   private final StackTraceElement[] stackTraces;
 
-  public StateNode(ServiceController.State state, StackTraceElement[] stackTraces) {
+  /**
+   * Constructs a StateNode with the given state.
+   */
+  public StateNode(ServiceController.State state) {
+    this(state, null, null);
+  }
+
+  /**
+   * Constructs a StateNode with {@link ServiceController.State#FAILED} caused by the given error.
+   */
+  public StateNode(Throwable error) {
+    this(Service.State.FAILED, error.getMessage(), error.getStackTrace());
+  }
+
+  /**
+   * Constructs a StateNode with the given state, error and stacktraces.
+   * This constructor should only be used by the StateNodeCodec.
+   */
+  public StateNode(ServiceController.State state, String errorMessage, StackTraceElement[] stackTraces) {
     this.state = state;
+    this.errorMessage = errorMessage;
     this.stackTraces = stackTraces;
   }
 
   public ServiceController.State getState() {
     return state;
+  }
+
+  public String getErrorMessage() {
+    return errorMessage;
   }
 
   public StackTraceElement[] getStackTraces() {
@@ -51,6 +67,9 @@ public final class StateNode {
   public String toString() {
     StringBuilder builder = new StringBuilder("state=").append(state);
 
+    if (errorMessage != null) {
+      builder.append("\n").append("error=").append(errorMessage);
+    }
     if (stackTraces != null) {
       builder.append("\n");
       for (StackTraceElement stackTrace : stackTraces) {

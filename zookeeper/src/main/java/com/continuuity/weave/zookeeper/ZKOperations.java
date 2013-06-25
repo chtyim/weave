@@ -18,7 +18,6 @@ package com.continuuity.weave.zookeeper;
 import com.continuuity.weave.common.Cancellable;
 import com.continuuity.weave.common.Threads;
 import com.continuuity.weave.internal.zookeeper.SettableOperationFuture;
-import com.google.common.base.Function;
 import com.google.common.collect.Lists;
 import com.google.common.util.concurrent.FutureCallback;
 import com.google.common.util.concurrent.Futures;
@@ -217,8 +216,6 @@ public final class ZKOperations {
    *         exception.
    */
   public static OperationFuture<String> recursiveDelete(final ZKClient zkClient, final String path) {
-    LOG.info("Deleting: {}", path);
-
     final SettableOperationFuture<String> resultFuture = SettableOperationFuture.create(path,
                                                                                         Threads.SAME_THREAD_EXECUTOR);
     // Try to delete the given path.
@@ -227,14 +224,12 @@ public final class ZKOperations {
 
       @Override
       public void onSuccess(String result) {
-        LOG.info("Deleted: " + result);
         // Path deleted successfully. Operation done.
         resultFuture.set(result);
       }
 
       @Override
       public void onFailure(Throwable t) {
-        LOG.info("Failed to delete.", t);
         // Failed to delete the given path
         if (!(t instanceof KeeperException.NotEmptyException)) {
           // For errors other than NotEmptyException, treat the operation as failed.
@@ -247,16 +242,11 @@ public final class ZKOperations {
 
           @Override
           public void onSuccess(NodeChildren result) {
-            // Function for deleting children node recursively.
-            Function<String, OperationFuture<String>> deleteFunc = new Function<String, OperationFuture<String>>() {
-              @Override
-              public OperationFuture<String> apply(String child) {
-                return recursiveDelete(zkClient, path + "/" + child);
-              }
-            };
-
             // Delete all children nodes recursively.
-            final List<OperationFuture<String>> deleteFutures = Lists.transform(result.getChildren(), deleteFunc);
+            final List<OperationFuture<String>> deleteFutures = Lists.newLinkedList();
+            for (String child :result.getChildren()) {
+              deleteFutures.add(recursiveDelete(zkClient, path + "/" + child));
+            }
 
             // When deletion of all children succeeded, delete the given path again.
             Futures.successfulAsList(deleteFutures).addListener(new Runnable() {
@@ -270,7 +260,7 @@ public final class ZKOperations {
                     resultFuture.setException(e.getCause());
                   }
                 }
-                Futures.addCallback(zkClient.delete(path), deleteCallback);
+                Futures.addCallback(zkClient.delete(path), deleteCallback, Threads.SAME_THREAD_EXECUTOR);
               }
             }, Threads.SAME_THREAD_EXECUTOR);
           }

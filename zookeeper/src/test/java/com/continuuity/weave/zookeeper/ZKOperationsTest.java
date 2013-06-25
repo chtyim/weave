@@ -5,9 +5,12 @@ package com.continuuity.weave.zookeeper;
 
 import com.continuuity.weave.internal.zookeeper.InMemoryZKServer;
 import org.apache.zookeeper.CreateMode;
+import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  *
@@ -15,7 +18,7 @@ import java.util.concurrent.ExecutionException;
 public class ZKOperationsTest {
 
   @Test
-  public void recursiveDelete() throws ExecutionException, InterruptedException {
+  public void recursiveDelete() throws ExecutionException, InterruptedException, TimeoutException {
     InMemoryZKServer zkServer = InMemoryZKServer.builder().setTickTime(1000).build();
     zkServer.startAndWait();
 
@@ -32,8 +35,9 @@ public class ZKOperationsTest {
         client.create("/test1/test11/test112", null, CreateMode.PERSISTENT).get();
         client.create("/test1/test11/test113", null, CreateMode.PERSISTENT).get();
 
-        ZKOperations.recursiveDelete(client, "/test1").get();
+        ZKOperations.recursiveDelete(client, "/test1").get(2, TimeUnit.SECONDS);
 
+        Assert.assertNull(client.exists("/test1").get(2, TimeUnit.SECONDS));
 
       } finally {
         client.stopAndWait();
